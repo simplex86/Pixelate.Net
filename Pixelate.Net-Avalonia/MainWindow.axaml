@@ -4,7 +4,7 @@
         xmlns:controls="using:Pixelate.Net.Avalonia.Controls"
         x:Class="Pixelate.Net.Avalonia.MainWindow"
         x:DataType="vm:MainWindowViewModel"
-        Title="拼豆像素画生成器 v0.1.7"
+        Title="拼豆像素画生成器 v0.2.11"
         Width="1280" Height="820"
         MinWidth="900" MinHeight="600"
         WindowStartupLocation="CenterScreen">
@@ -17,25 +17,82 @@
             <!-- 左列：上(选择图片+原图) / 下(参数设置) -->
             <Grid Grid.Column="0" RowDefinitions="*,8,Auto">
 
-                <!-- 上：选择图片按钮 + 原图 -->
-                <Grid Grid.Row="0" RowDefinitions="Auto,*">
+                <!-- 上：选择图片按钮 + 原图 + 编辑按钮 -->
+                <Grid Grid.Row="0" RowDefinitions="Auto,*,Auto">
                     <Button Grid.Row="0"
                             Content="选择图片"
                             Command="{Binding PickImageCommand}"
                             HorizontalAlignment="Stretch"
                             HorizontalContentAlignment="Center"
                             Padding="16,6"
-                            Margin="0,0,0,8" />
+                            Margin="0,0,0,8">
+                        <Button.Resources>
+                            <SolidColorBrush x:Key="ButtonBackground" Color="#2196F3" />
+                            <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#42A5F5" />
+                            <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#1976D2" />
+                            <SolidColorBrush x:Key="ButtonForeground" Color="White" />
+                            <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="White" />
+                        </Button.Resources>
+                    </Button>
                     <Border Grid.Row="1"
                             Background="#F0F0F0"
                             BorderBrush="#D0D0D0"
                             BorderThickness="1"
                             Padding="6">
-                        <Image Source="{Binding OriginalBitmap}"
-                               Stretch="Uniform"
-                               HorizontalAlignment="Center"
-                               VerticalAlignment="Center" />
+                        <controls:ImageSelectionControl
+                            Source="{Binding OriginalBitmap}"
+                            Selection="{Binding Selection, Mode=TwoWay}"
+                            IsEditing="{Binding IsEditing}"
+                            HorizontalAlignment="Stretch"
+                            VerticalAlignment="Stretch" />
                     </Border>
+
+                    <!-- 编辑/取消/应用按钮 -->
+                    <Grid Grid.Row="2" Margin="0,8,0,0">
+                        <Button Content="编辑"
+                                Command="{Binding EditCommand}"
+                                IsVisible="{Binding !IsEditing}"
+                                Classes="btn-edit"
+                                HorizontalAlignment="Center"
+                                Padding="24,6">
+                            <Button.Resources>
+                                <SolidColorBrush x:Key="ButtonBackground" Color="#4CAF50" />
+                                <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#5DBD5D" />
+                                <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#3D9140" />
+                                <SolidColorBrush x:Key="ButtonForeground" Color="White" />
+                                <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="White" />
+                            </Button.Resources>
+                        </Button>
+                        <StackPanel Orientation="Horizontal"
+                                    IsVisible="{Binding IsEditing}"
+                                    HorizontalAlignment="Center"
+                                    Spacing="8">
+                            <Button Content="取消"
+                                    Command="{Binding CancelCommand}"
+                                    Classes="btn-cancel"
+                                    Padding="24,6">
+                                <Button.Resources>
+                                    <SolidColorBrush x:Key="ButtonBackground" Color="#FF6B6B" />
+                                    <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#FF8585" />
+                                    <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#E04848" />
+                                    <SolidColorBrush x:Key="ButtonForeground" Color="White" />
+                                    <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="White" />
+                                </Button.Resources>
+                            </Button>
+                            <Button Content="应用"
+                                    Command="{Binding ApplyCommand}"
+                                    Classes="btn-apply"
+                                    Padding="24,6">
+                                <Button.Resources>
+                                    <SolidColorBrush x:Key="ButtonBackground" Color="#FFA500" />
+                                    <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#FFB733" />
+                                    <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#CC8400" />
+                                    <SolidColorBrush x:Key="ButtonForeground" Color="White" />
+                                    <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="White" />
+                                </Button.Resources>
+                            </Button>
+                        </StackPanel>
+                    </Grid>
                 </Grid>
 
                 <!-- 下：参数设置 -->
@@ -98,9 +155,16 @@
                                             Content="重置"
                                             Command="{Binding ResetThresholdCommand}"
                                             IsEnabled="{Binding UseManualThreshold}"
-                                            Background="#FFA500"
-                                            Foreground="White"
-                                            Padding="14,6" />
+                                            Classes="btn-reset"
+                                            Padding="14,6">
+                                        <Button.Resources>
+                                            <SolidColorBrush x:Key="ButtonBackground" Color="#FFA500" />
+                                            <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#FFB733" />
+                                            <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#CC8400" />
+                                            <SolidColorBrush x:Key="ButtonForeground" Color="White" />
+                                            <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="White" />
+                                        </Button.Resources>
+                                    </Button>
                                 </Grid>
 
                                 <TextBlock Text="显示模式" Margin="0,0,0,4" />

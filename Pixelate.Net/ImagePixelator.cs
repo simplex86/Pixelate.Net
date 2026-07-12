@@ -57,13 +57,11 @@ namespace Pixelate.Net
             int outH = (height + ps - 1) / ps;
             byte[] output = new byte[outW * outH * 4];
 
-            // 颜色合并
+            // 颜色合并（算法层不自动计算阈值，由前端设置）
             byte[]? palette = null;
             int[]? assignments = null;
             int pixelCount = width * height;
-            int effectiveThreshold = options.UseAutoThreshold
-                ? ColorMerger.ComputeAutoThreshold(sourceRgba, pixelCount)
-                : options.ColorMergeThreshold;
+            int effectiveThreshold = options.ColorMergeThreshold;
             if (effectiveThreshold > 0)
             {
                 (palette, assignments) = ColorMerger.Merge(sourceRgba, pixelCount, effectiveThreshold);

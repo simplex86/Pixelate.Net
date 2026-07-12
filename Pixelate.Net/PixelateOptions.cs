@@ -27,16 +27,10 @@ namespace Pixelate.Net
         /// 颜色合并阈值 [0, 100]。
         /// 0 = 不合并，直接块取色；
         /// 越大颜色越少（彩虹 → 7 色约需 30）。
-        /// 仅在 <see cref="UseAutoThreshold"/> = false 时生效。
+        /// 前端负责自动阈值的计算和设置；算法层仅使用此值。
         /// 内部映射为加权 RGB 距离平方阈值 = threshold²。
         /// </summary>
         public int ColorMergeThreshold { get; set; } = 30;
-
-        /// <summary>
-        /// 是否使用自动阈值。为 true 时忽略 <see cref="ColorMergeThreshold"/>，
-        /// 根据图像颜色分布自动计算合并阈值。
-        /// </summary>
-        public bool UseAutoThreshold { get; set; } = true;
 
         /// <summary>分块取色模式。</summary>
         public ProcessMode Mode { get; set; } = ProcessMode.Realistic;
