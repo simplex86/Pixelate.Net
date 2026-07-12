@@ -265,11 +265,10 @@ public partial class MainWindowViewModel : ObservableObject
             _appliedSelection = new Rect(0, 0, 1, 1);
             IsEditing = false;
 
-            // 计算自动阈值并设为阈值的默认值。
-            byte[] src = _sourceRgba;
-            int sw = img.Width;
-            int sh = img.Height;
-            _autoThreshold = await Task.Run(() => ImagePixelator.ComputeAutoThreshold(src, sw, sh));
+            // 计算自动阈值并设为阈值的默认值（基于框选部分）。
+            var (cropData, cropW, cropH) = ExtractCropData();
+            byte[] cd = cropData;
+            _autoThreshold = await Task.Run(() => ImagePixelator.ComputeAutoThreshold(cd, cropW, cropH));
             ColorMergeThreshold = _autoThreshold;
             _needsThresholdUpdate = false;
 
