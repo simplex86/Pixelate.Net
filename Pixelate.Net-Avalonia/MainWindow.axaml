@@ -1,0 +1,159 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Pixelate.Net.Avalonia.ViewModels"
+        xmlns:controls="using:Pixelate.Net.Avalonia.Controls"
+        x:Class="Pixelate.Net.Avalonia.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Title="拼豆像素画生成器 v0.1.7"
+        Width="1280" Height="820"
+        MinWidth="900" MinHeight="600"
+        WindowStartupLocation="CenterScreen">
+
+    <Grid RowDefinitions="*,Auto" Margin="12">
+
+        <!-- 主区域：左 | 右 -->
+        <Grid Grid.Row="0" ColumnDefinitions="0.8*,8,2*" Margin="0,0,0,8">
+
+            <!-- 左列：上(选择图片+原图) / 下(参数设置) -->
+            <Grid Grid.Column="0" RowDefinitions="*,8,Auto">
+
+                <!-- 上：选择图片按钮 + 原图 -->
+                <Grid Grid.Row="0" RowDefinitions="Auto,*">
+                    <Button Grid.Row="0"
+                            Content="选择图片"
+                            Command="{Binding PickImageCommand}"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Center"
+                            Padding="16,6"
+                            Margin="0,0,0,8" />
+                    <Border Grid.Row="1"
+                            Background="#F0F0F0"
+                            BorderBrush="#D0D0D0"
+                            BorderThickness="1"
+                            Padding="6">
+                        <Image Source="{Binding OriginalBitmap}"
+                               Stretch="Uniform"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center" />
+                    </Border>
+                </Grid>
+
+                <!-- 下：参数设置 -->
+                <Grid Grid.Row="2" RowDefinitions="Auto,Auto">
+                    <TextBlock Grid.Row="0"
+                               Text="参数设置"
+                               FontWeight="SemiBold"
+                               Margin="0,0,0,6" />
+                    <Border Grid.Row="1"
+                            Height="430"
+                            Background="#FAFAFA"
+                            BorderBrush="#D0D0D0"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            Padding="14">
+                        <Grid RowDefinitions="*,Auto">
+                            <StackPanel Grid.Row="0" VerticalAlignment="Top">
+                                <TextBlock Text="处理模式" Margin="0,0,0,4" />
+                                <ComboBox ItemsSource="{Binding Modes}"
+                                          SelectedItem="{Binding SelectedMode}"
+                                          HorizontalAlignment="Stretch"
+                                          Margin="0,0,0,14">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:ProcessModeOption">
+                                            <TextBlock Text="{Binding DisplayName}" />
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+
+                                <TextBlock Text="横向分割数量" Margin="0,0,0,4" />
+                                <NumericUpDown Minimum="1"
+                                               Maximum="1024"
+                                               Value="{Binding HorizontalSplits}"
+                                               FormatString="0"
+                                               Margin="0,0,0,14" />
+
+                                <Grid ColumnDefinitions="Auto,15,*" Margin="0,0,0,14">
+                                    <CheckBox Grid.Column="0"
+                                              Content="手动调整阈值"
+                                              IsChecked="{Binding UseManualThreshold}"
+                                              VerticalAlignment="Center" />
+                                    <Slider Grid.Column="2"
+                                            Minimum="0"
+                                            Maximum="100"
+                                            Value="{Binding ColorMergeThreshold}"
+                                            TickFrequency="5"
+                                            IsSnapToTickEnabled="False"
+                                            IsEnabled="{Binding UseManualThreshold}"
+                                            VerticalAlignment="Center" />
+                                </Grid>
+
+                                <Grid ColumnDefinitions="*,8,Auto" Margin="0,0,0,14">
+                                    <NumericUpDown Grid.Column="0"
+                                                   Minimum="0"
+                                                   Maximum="100"
+                                                   Value="{Binding ColorMergeThreshold}"
+                                                   FormatString="0"
+                                                   IsEnabled="{Binding UseManualThreshold}" />
+                                    <Button Grid.Column="2"
+                                            Content="重置"
+                                            Command="{Binding ResetThresholdCommand}"
+                                            IsEnabled="{Binding UseManualThreshold}"
+                                            Background="#FFA500"
+                                            Foreground="White"
+                                            Padding="14,6" />
+                                </Grid>
+
+                                <TextBlock Text="显示模式" Margin="0,0,0,4" />
+                                <ComboBox ItemsSource="{Binding DisplayModes}"
+                                          SelectedItem="{Binding SelectedDisplayMode}"
+                                          HorizontalAlignment="Stretch"
+                                          Margin="0,0,0,14">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:DisplayModeOption">
+                                            <TextBlock Text="{Binding DisplayName}" />
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                            </StackPanel>
+
+                            <Button Grid.Row="1"
+                                    Content="生成"
+                                    Classes="accent"
+                                    Command="{Binding GenerateCommand}"
+                                    HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Center"
+                                    VerticalContentAlignment="Center"
+                                    Padding="0,16" />
+                        </Grid>
+                    </Border>
+                </Grid>
+            </Grid>
+
+            <!-- 右列：像素化结果 -->
+            <Border Grid.Column="2"
+                    Background="#F0F0F0"
+                    BorderBrush="#D0D0D0"
+                    BorderThickness="1"
+                    Padding="6">
+                <controls:PixelGridControl PixelData="{Binding PixelatedData}"
+                                           GridWidth="{Binding PixelatedWidth}"
+                                           GridHeight="{Binding PixelatedHeight}"
+                                           DisplayMode="{Binding SelectedDisplayMode.Value}"
+                                           HorizontalAlignment="Stretch"
+                                           VerticalAlignment="Stretch" />
+            </Border>
+        </Grid>
+
+        <!-- 底部状态栏 -->
+        <Border Grid.Row="1"
+                BorderBrush="#D0D0D0"
+                BorderThickness="0,1,0,0"
+                Padding="0,8,0,0">
+            <StackPanel Orientation="Horizontal" Spacing="24">
+                <TextBlock Text="{Binding OriginalInfo}" />
+                <TextBlock Text="{Binding OutputInfo}" />
+                <TextBlock Text="{Binding BeadCount}" />
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>
