@@ -24,6 +24,11 @@ public sealed record ProcessModeOption(ProcessMode Value, string DisplayName);
 /// </summary>
 public sealed record DisplayModeOption(DisplayMode Value, string DisplayName);
 
+/// <summary>
+/// 拼豆品牌色卡选项（带中文显示名）。
+/// </summary>
+public sealed record BeadBrandOption(BeadBrand Value, string DisplayName);
+
 public partial class MainWindowViewModel : ObservableObject
 {
     public ProcessModeOption[] Modes { get; } =
@@ -38,6 +43,16 @@ public partial class MainWindowViewModel : ObservableObject
         new(DisplayMode.Round, "圆珠")
     };
 
+    public BeadBrandOption[] Brands { get; } =
+    {
+        new(BeadBrand.None, "自由色（不限制）"),
+        new(BeadBrand.Mard, "MARD（291色）"),
+        new(BeadBrand.ArtkalS, "Artkal S（159色）"),
+        new(BeadBrand.Perler, "Perler（57色）"),
+        new(BeadBrand.Hama, "Hama（53色）"),
+        new(BeadBrand.Nabbi, "Nabbi（30色）")
+    };
+
     [ObservableProperty] private string? _imagePath;
     [ObservableProperty] private string? _originalInfo;
     [ObservableProperty] private string? _outputInfo;
@@ -46,7 +61,9 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty] private byte[]? _pixelatedData;
     [ObservableProperty] private int _pixelatedWidth;
     [ObservableProperty] private int _pixelatedHeight;
-    [ObservableProperty] private bool _useManualThreshold;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsThresholdControlsEnabled))]
+    private bool _useManualThreshold;
 
     /// <summary>选择框（归一化坐标 0~1），与控件双向绑定。</summary>
     [ObservableProperty] private Rect _selection = new(0, 0, 1, 1);
@@ -83,6 +100,26 @@ public partial class MainWindowViewModel : ObservableObject
         set => SetProperty(ref _selectedMode, value);
     }
 
+    private BeadBrandOption _selectedBrand;
+    public BeadBrandOption SelectedBrand
+    {
+        get => _selectedBrand;
+        set
+        {
+            if (SetProperty(ref _selectedBrand, value))
+            {
+                OnPropertyChanged(nameof(IsThresholdEnabled));
+                OnPropertyChanged(nameof(IsThresholdControlsEnabled));
+            }
+        }
+    }
+
+    /// <summary>阈值控件是否可用（仅自由色模式）。</summary>
+    public bool IsThresholdEnabled => _selectedBrand?.Value == BeadBrand.None;
+
+    /// <summary>阈值具体控件（Slider/NumericUpDown/重置）是否可用：需同时满足自由色模式且勾选手动阈值。</summary>
+    public bool IsThresholdControlsEnabled => IsThresholdEnabled && UseManualThreshold;
+
     // 已加载的源像素数据，供反复生成使用。
     private byte[]? _sourceRgba;
     private int _sourceWidth;
@@ -98,6 +135,7 @@ public partial class MainWindowViewModel : ObservableObject
     {
         _selectedMode = Modes[1];
         _selectedDisplayMode = DisplayModes[0];
+        _selectedBrand = Brands[0];
     }
 
     private bool CanGenerate => _sourceRgba is not null;
@@ -167,7 +205,8 @@ public partial class MainWindowViewModel : ObservableObject
         {
             HorizontalSplits = hs,
             ColorMergeThreshold = threshold,
-            Mode = mode
+            Mode = mode,
+            Brand = _selectedBrand?.Value ?? BeadBrand.None
         };
 
         try

@@ -61,10 +61,20 @@ namespace Pixelate.Net
             byte[]? palette = null;
             int[]? assignments = null;
             int pixelCount = width * height;
-            int effectiveThreshold = options.ColorMergeThreshold;
-            if (effectiveThreshold > 0)
+
+            if (options.Brand != BeadBrand.None)
             {
-                (palette, assignments) = ColorMerger.Merge(sourceRgba, pixelCount, effectiveThreshold);
+                // 品牌色卡模式：调色板固定为该品牌官方色，跳过 ColorMerger 任意聚类。
+                palette = BeadPalettes.GetRgbBytes(options.Brand);
+                // assignments 留 null，由 Cartoon 路径按需构建。
+            }
+            else
+            {
+                int effectiveThreshold = options.ColorMergeThreshold;
+                if (effectiveThreshold > 0)
+                {
+                    (palette, assignments) = ColorMerger.Merge(sourceRgba, pixelCount, effectiveThreshold);
+                }
             }
 
             // 分块取色
@@ -147,6 +157,10 @@ namespace Pixelate.Net
             {
                 CartoonWithPalette(src, width, height, ps, outW, outH, palette, assignments, dst);
             }
+            else if (palette != null)
+            {
+                CartoonWithBeadPalette(src, width, height, ps, outW, outH, palette, dst);
+            }
             else
             {
                 CartoonNoPalette(src, width, height, ps, outW, outH, dst);
@@ -181,6 +195,75 @@ namespace Pixelate.Net
                             int p = rowBase + x;
                             blockCounts[assignments[p]]++;
                             aSum += src[p * 4 + 3];
+                            aCount++;
+                        }
+                    }
+
+                    int bestCluster = 0;
+                    int bestCount = -1;
+                    for (int c = 0; c < palCount; c++)
+                    {
+                        if (blockCounts[c] > bestCount)
+                        {
+                            bestCount = blockCounts[c];
+                            bestCluster = c;
+                        }
+                    }
+
+                    int di = (oy * outW + ox) * 4;
+                    dst[di] = palette[bestCluster * 3];
+                    dst[di + 1] = palette[bestCluster * 3 + 1];
+                    dst[di + 2] = palette[bestCluster * 3 + 2];
+                    dst[di + 3] = (byte)(aSum / aCount);
+                }
+            }
+        }
+
+        /// <summary>
+        /// 品牌色卡（palette 非 null、assignments 为 null）：块内品牌色号众数。
+        /// 先一次性构建 32768 项 5 位量化 bin → 品牌色索引查找表，再每块统计品牌色号频率取众数。
+        /// </summary>
+        private static void CartoonWithBeadPalette(
+            ReadOnlySpan<byte> src, int width, int height, int ps, int outW, int outH,
+            byte[] palette, byte[] dst)
+        {
+            int palCount = palette.Length / 3;
+
+            // 1. 构建 bin → 品牌色索引查找表（一次性，O(32768 × palCount)）
+            int[] binLookup = new int[32 * 32 * 32];
+            for (int bin = 0; bin < binLookup.Length; bin++)
+            {
+                // 由 bin 索引还原中心代表色：高 5 位 + 4（bin 中心）
+                byte r = (byte)(((bin >> 10) & 0x1F) << 3 | 0x04);
+                byte g = (byte)(((bin >> 5) & 0x1F) << 3 | 0x04);
+                byte b = (byte)((bin & 0x1F) << 3 | 0x04);
+                binLookup[bin] = BeadPalettes.NearestIndex(r, g, b, palette);
+            }
+
+            int[] blockCounts = new int[palCount];
+
+            for (int oy = 0; oy < outH; oy++)
+            {
+                int y0 = oy * ps;
+                int y1 = Math.Min(y0 + ps, height);
+                for (int ox = 0; ox < outW; ox++)
+                {
+                    int x0 = ox * ps;
+                    int x1 = Math.Min(x0 + ps, width);
+
+                    Array.Clear(blockCounts, 0, palCount);
+                    long aSum = 0;
+                    int aCount = 0;
+                    for (int y = y0; y < y1; y++)
+                    {
+                        int row = y * width * 4;
+                        for (int x = x0; x < x1; x++)
+                        {
+                            int i = row + x * 4;
+                            byte r = src[i], g = src[i + 1], b = src[i + 2];
+                            int bin = ((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3);
+                            blockCounts[binLookup[bin]]++;
+                            aSum += src[i + 3];
                             aCount++;
                         }
                     }

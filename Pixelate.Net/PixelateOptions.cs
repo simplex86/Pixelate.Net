@@ -34,5 +34,11 @@ namespace Pixelate.Net
 
         /// <summary>分块取色模式。</summary>
         public ProcessMode Mode { get; set; } = ProcessMode.Realistic;
+
+        /// <summary>
+        /// 拼豆品牌色卡。None = 自由色（用 ColorMergeThreshold 任意聚类）；
+        /// 其他值 = 把每个色块映射到该品牌官方色卡的最近色号，此时 ColorMergeThreshold 被忽略。
+        /// </summary>
+        public BeadBrand Brand { get; set; } = BeadBrand.None;
     }
 }

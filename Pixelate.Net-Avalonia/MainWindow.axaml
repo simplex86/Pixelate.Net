@@ -4,18 +4,18 @@
         xmlns:controls="using:Pixelate.Net.Avalonia.Controls"
         x:Class="Pixelate.Net.Avalonia.MainWindow"
         x:DataType="vm:MainWindowViewModel"
-        Title="拼豆像素画生成器 v0.2.11"
-        Width="1280" Height="820"
-        MinWidth="900" MinHeight="600"
+        Title="拼豆像素画生成器 v0.3.12"
+        Width="1280" Height="960"
+        MinWidth="1280" MinHeight="960"
         WindowStartupLocation="CenterScreen">
 
     <Grid RowDefinitions="*,Auto" Margin="12">
 
         <!-- 主区域：左 | 右 -->
-        <Grid Grid.Row="0" ColumnDefinitions="0.8*,8,2*" Margin="0,0,0,8">
+        <Grid Grid.Row="0" ColumnDefinitions="420,8,*" Margin="0,0,0,8">
 
             <!-- 左列：上(选择图片+原图) / 下(参数设置) -->
-            <Grid Grid.Column="0" RowDefinitions="*,8,Auto">
+            <Grid Grid.Column="0" RowDefinitions="320,8,*">
 
                 <!-- 上：选择图片按钮 + 原图 + 编辑按钮 -->
                 <Grid Grid.Row="0" RowDefinitions="Auto,*,Auto">
@@ -96,13 +96,12 @@
                 </Grid>
 
                 <!-- 下：参数设置 -->
-                <Grid Grid.Row="2" RowDefinitions="Auto,Auto">
+                <Grid Grid.Row="2" RowDefinitions="Auto,*">
                     <TextBlock Grid.Row="0"
                                Text="参数设置"
                                FontWeight="SemiBold"
                                Margin="0,0,0,6" />
                     <Border Grid.Row="1"
-                            Height="430"
                             Background="#FAFAFA"
                             BorderBrush="#D0D0D0"
                             BorderThickness="1"
@@ -129,10 +128,23 @@
                                                FormatString="0"
                                                Margin="0,0,0,14" />
 
+                                <TextBlock Text="色卡" Margin="0,0,0,4" />
+                                <ComboBox ItemsSource="{Binding Brands}"
+                                          SelectedItem="{Binding SelectedBrand}"
+                                          HorizontalAlignment="Stretch"
+                                          Margin="0,0,0,14">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:BeadBrandOption">
+                                            <TextBlock Text="{Binding DisplayName}" />
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+
                                 <Grid ColumnDefinitions="Auto,15,*" Margin="0,0,0,14">
                                     <CheckBox Grid.Column="0"
                                               Content="手动调整阈值"
                                               IsChecked="{Binding UseManualThreshold}"
+                                              IsEnabled="{Binding IsThresholdEnabled}"
                                               VerticalAlignment="Center" />
                                     <Slider Grid.Column="2"
                                             Minimum="0"
@@ -140,7 +152,7 @@
                                             Value="{Binding ColorMergeThreshold}"
                                             TickFrequency="5"
                                             IsSnapToTickEnabled="False"
-                                            IsEnabled="{Binding UseManualThreshold}"
+                                            IsEnabled="{Binding IsThresholdControlsEnabled}"
                                             VerticalAlignment="Center" />
                                 </Grid>
 
@@ -150,11 +162,11 @@
                                                    Maximum="100"
                                                    Value="{Binding ColorMergeThreshold}"
                                                    FormatString="0"
-                                                   IsEnabled="{Binding UseManualThreshold}" />
+                                                   IsEnabled="{Binding IsThresholdControlsEnabled}" />
                                     <Button Grid.Column="2"
                                             Content="重置"
                                             Command="{Binding ResetThresholdCommand}"
-                                            IsEnabled="{Binding UseManualThreshold}"
+                                            IsEnabled="{Binding IsThresholdControlsEnabled}"
                                             Classes="btn-reset"
                                             Padding="14,6">
                                         <Button.Resources>
