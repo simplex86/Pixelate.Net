@@ -4,18 +4,23 @@
         xmlns:controls="using:Pixelate.Net.Avalonia.Controls"
         x:Class="Pixelate.Net.Avalonia.MainWindow"
         x:DataType="vm:MainWindowViewModel"
-        Title="拼豆像素画生成器 v0.3.12"
+        Title="拼豆像素画生成器 v0.4.13"
         Width="1280" Height="960"
         MinWidth="1280" MinHeight="960"
         WindowStartupLocation="CenterScreen">
+
+    <Window.KeyBindings>
+        <KeyBinding Gesture="Ctrl+Z" Command="{Binding UndoCommand}" />
+    </Window.KeyBindings>
 
     <Grid RowDefinitions="*,Auto" Margin="12">
 
         <!-- 主区域：左 | 右 -->
         <Grid Grid.Row="0" ColumnDefinitions="420,8,*" Margin="0,0,0,8">
 
-            <!-- 左列：上(选择图片+原图) / 下(参数设置) -->
-            <Grid Grid.Column="0" RowDefinitions="320,8,*">
+            <!-- 左列：正常视图 / 像素编辑面板 -->
+            <Grid Grid.Column="0">
+              <Grid RowDefinitions="320,8,*" IsVisible="{Binding !IsPixelEditing}">
 
                 <!-- 上：选择图片按钮 + 原图 + 编辑按钮 -->
                 <Grid Grid.Row="0" RowDefinitions="Auto,*,Auto">
@@ -192,32 +197,130 @@
                                 </ComboBox>
                             </StackPanel>
 
-                            <Button Grid.Row="1"
-                                    Content="生成"
-                                    Classes="accent"
-                                    Command="{Binding GenerateCommand}"
-                                    HorizontalAlignment="Stretch"
-                                    HorizontalContentAlignment="Center"
-                                    VerticalContentAlignment="Center"
-                                    Padding="0,16" />
+                            <Grid Grid.Row="1" ColumnDefinitions="*,8,Auto">
+                                <Button Grid.Column="0"
+                                        Content="生成"
+                                        Classes="accent"
+                                        Command="{Binding GenerateCommand}"
+                                        HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Center"
+                                        VerticalContentAlignment="Center"
+                                        Padding="0,16" />
+                                <Button Grid.Column="2"
+                                        Content="编辑像素"
+                                        Command="{Binding EditPixelsCommand}"
+                                        VerticalContentAlignment="Center"
+                                        Padding="14,16" />
+                            </Grid>
                         </Grid>
                     </Border>
                 </Grid>
+              </Grid>
+
+              <!-- 像素编辑面板 -->
+              <Grid RowDefinitions="Auto,*,Auto" IsVisible="{Binding IsPixelEditing}">
+                  <TextBlock Grid.Row="0"
+                             Text="{Binding SelectedBrand.DisplayName}"
+                             FontWeight="SemiBold"
+                             Margin="0,0,0,8" />
+                  <Border Grid.Row="1"
+                          Background="#FAFAFA"
+                          BorderBrush="#D0D0D0"
+                          BorderThickness="1"
+                          CornerRadius="4"
+                          Padding="6">
+                      <ListBox ItemsSource="{Binding EditColors}"
+                               SelectedItem="{Binding SelectedEditColor, Mode=TwoWay}"
+                               Background="Transparent"
+                               BorderThickness="0">
+                          <ListBox.ItemsPanel>
+                              <ItemsPanelTemplate>
+                                  <UniformGrid Columns="3" />
+                              </ItemsPanelTemplate>
+                          </ListBox.ItemsPanel>
+                          <ListBox.ItemTemplate>
+                              <DataTemplate x:DataType="vm:PaletteColorItem">
+                                  <StackPanel Orientation="Horizontal" Spacing="6" Margin="2">
+                                      <Border Width="18" Height="18"
+                                              Background="{Binding Brush}"
+                                              BorderBrush="#C0C0C0"
+                                              BorderThickness="1"
+                                              CornerRadius="2" />
+                                      <TextBlock Text="{Binding DisplayName}"
+                                                 FontSize="11"
+                                                 TextTrimming="CharacterEllipsis"
+                                                 VerticalAlignment="Center" />
+                                  </StackPanel>
+                              </DataTemplate>
+                          </ListBox.ItemTemplate>
+                          <ListBox.Styles>
+                              <Style Selector="ListBoxItem">
+                                  <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                  <Setter Property="Padding" Value="4,2" />
+                              </Style>
+                          </ListBox.Styles>
+                      </ListBox>
+                  </Border>
+                  <Grid Grid.Row="2" ColumnDefinitions="Auto,*,Auto" Margin="0,8,0,0">
+                      <ToggleButton Grid.Column="0"
+                                    Content="取色"
+                                    IsChecked="{Binding IsEyedropping}"
+                                    Padding="14,6" />
+                      <StackPanel Grid.Column="2"
+                                  Orientation="Horizontal"
+                                  Spacing="8">
+                          <Button Content="取消"
+                                  Command="{Binding CancelEditPixelsCommand}"
+                                  Padding="24,6">
+                              <Button.Resources>
+                                  <SolidColorBrush x:Key="ButtonBackground" Color="#FF6B6B" />
+                                  <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#FF8585" />
+                                  <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#E04848" />
+                                  <SolidColorBrush x:Key="ButtonForeground" Color="White" />
+                                  <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="White" />
+                              </Button.Resources>
+                          </Button>
+                          <Button Content="应用"
+                                  Command="{Binding ApplyEditPixelsCommand}"
+                                  Padding="24,6">
+                              <Button.Resources>
+                                  <SolidColorBrush x:Key="ButtonBackground" Color="#FFA500" />
+                                  <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#FFB733" />
+                                  <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#CC8400" />
+                                  <SolidColorBrush x:Key="ButtonForeground" Color="White" />
+                                  <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="White" />
+                              </Button.Resources>
+                          </Button>
+                      </StackPanel>
+                  </Grid>
+              </Grid>
             </Grid>
 
-            <!-- 右列：像素化结果 -->
-            <Border Grid.Column="2"
-                    Background="#F0F0F0"
-                    BorderBrush="#D0D0D0"
-                    BorderThickness="1"
-                    Padding="6">
-                <controls:PixelGridControl PixelData="{Binding PixelatedData}"
-                                           GridWidth="{Binding PixelatedWidth}"
-                                           GridHeight="{Binding PixelatedHeight}"
-                                           DisplayMode="{Binding SelectedDisplayMode.Value}"
-                                           HorizontalAlignment="Stretch"
-                                           VerticalAlignment="Stretch" />
-            </Border>
+            <!-- 右列：像素化结果 + 显示编码复选框 -->
+            <Grid Grid.Column="2" RowDefinitions="*,Auto">
+                <Border Grid.Row="0"
+                        Background="#F0F0F0"
+                        BorderBrush="#D0D0D0"
+                        BorderThickness="1"
+                        Padding="6">
+                    <controls:PixelGridControl PixelData="{Binding PixelatedData}"
+                                               GridWidth="{Binding PixelatedWidth}"
+                                               GridHeight="{Binding PixelatedHeight}"
+                                               DisplayMode="{Binding SelectedDisplayMode.Value}"
+                                               IsEditable="{Binding IsPixelEditing}"
+                                               IsEyedropping="{Binding IsEyedropping}"
+                                               ShowCodes="{Binding ShowCodes}"
+                                               ColorCodeMap="{Binding ColorCodeMap}"
+                                               PixelClicked="PixelGridControl_PixelClicked"
+                                               HorizontalAlignment="Stretch"
+                                               VerticalAlignment="Stretch" />
+                </Border>
+                <CheckBox Grid.Row="1"
+                          Content="显示颜色编码"
+                          IsChecked="{Binding ShowCodes}"
+                          IsEnabled="{Binding CanShowCodes}"
+                          Margin="0,6,0,0" />
+            </Grid>
         </Grid>
 
         <!-- 底部状态栏 -->
