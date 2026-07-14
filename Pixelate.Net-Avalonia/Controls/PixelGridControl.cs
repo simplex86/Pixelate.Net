@@ -17,7 +17,10 @@ public enum DisplayMode
     Square,
 
     /// <summary>圆珠：每个像素渲染成圆形，无分割线。</summary>
-    Round
+    Round,
+
+    /// <summary>空珠：每个像素渲染成空心圆环，无分割线。</summary>
+    Hollow
 }
 
 /// <summary>
@@ -177,7 +180,7 @@ public class PixelGridControl : Control
                     context.DrawLine(GridPen, new Point(0, py), new Point(GridWidth * cw, py));
                 }
             }
-            else // 圆珠
+            else if (DisplayMode == DisplayMode.Round) // 圆珠
             {
                 for (int y = 0; y < GridHeight; y++)
                 {
@@ -187,6 +190,21 @@ public class PixelGridControl : Control
                         var brush = GetBrush(data[i], data[i + 1], data[i + 2], data[i + 3]);
                         var rect = new Rect(x * cw, y * ch, cw, ch);
                         context.DrawEllipse(brush, null, rect);
+                    }
+                }
+            }
+            else // 空珠
+            {
+                double strokeWidth = Math.Max(1, Math.Min(cw, ch) / 6);
+                double inset = strokeWidth / 2;
+                for (int y = 0; y < GridHeight; y++)
+                {
+                    for (int x = 0; x < GridWidth; x++)
+                    {
+                        int i = (y * GridWidth + x) * 4;
+                        var brush = GetBrush(data[i], data[i + 1], data[i + 2], data[i + 3]);
+                        var rect = new Rect(x * cw + inset, y * ch + inset, cw - strokeWidth, ch - strokeWidth);
+                        context.DrawEllipse(null, new Pen(brush, strokeWidth), rect);
                     }
                 }
             }

@@ -11,6 +11,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Pixelate.Net;
 using Pixelate.Net.Avalonia.Controls;
+using Pixelate.Net.Avalonia.Services;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 
@@ -59,7 +60,8 @@ public partial class MainWindowViewModel : ObservableObject
     public DisplayModeOption[] DisplayModes { get; } =
     {
         new(DisplayMode.Square, "方珠"),
-        new(DisplayMode.Round, "圆珠")
+        new(DisplayMode.Round, "圆珠"),
+        new(DisplayMode.Hollow, "空珠")
     };
 
     public BeadBrandOption[] Brands { get; } =
@@ -86,7 +88,9 @@ public partial class MainWindowViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsThresholdControlsEnabled))]
     private bool _useManualThreshold;
 
-    [ObservableProperty] private bool _isPixelEditing;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanExport))]
+    private bool _isPixelEditing;
     [ObservableProperty] private IReadOnlyList<PaletteColorItem> _editColors = Array.Empty<PaletteColorItem>();
     [ObservableProperty] private PaletteColorItem? _selectedEditColor;
     [ObservableProperty] private bool _showCodes;
@@ -160,6 +164,9 @@ public partial class MainWindowViewModel : ObservableObject
     /// <summary>是否可显示颜色编码：需选中了品牌色卡。</summary>
     public bool CanShowCodes => _selectedBrand?.Value != BeadBrand.None;
 
+    /// <summary>是否可导出：需已有像素化结果且未处于像素编辑模式。</summary>
+    public bool CanExport => PixelatedData is not null && !IsPixelEditing;
+
     // 已加载的源像素数据，供反复生成使用。
     private byte[]? _sourceRgba;
     private int _sourceWidth;
@@ -187,6 +194,7 @@ public partial class MainWindowViewModel : ObservableObject
     partial void OnPixelatedDataChanged(byte[]? value)
     {
         EditPixelsCommand.NotifyCanExecuteChanged();
+        ExportCommand.NotifyCanExecuteChanged();
     }
 
     private bool CanGenerate => _sourceRgba is not null;
@@ -493,6 +501,51 @@ public partial class MainWindowViewModel : ObservableObject
 
             // 加载后立即生成一次，提供即时反馈。
             await GenerateAsync();
+        }
+        catch (Exception)
+        {
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanExport))]
+    private async Task ExportAsync(string format)
+    {
+        if (PixelatedData is null) return;
+
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime desktop)
+            return;
+        var window = desktop.MainWindow;
+        if (window is null) return;
+
+        var ext = format.ToUpperInvariant() switch
+        {
+            "PNG" => "png",
+            "JPG" => "jpg",
+            "SVG" => "svg",
+            "PDF" => "pdf",
+            _ => "png"
+        };
+
+        var file = await window.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = $"导出为 {format.ToUpperInvariant()}",
+            DefaultExtension = ext,
+            FileTypeChoices = new[]
+            {
+                new FilePickerFileType($"{format.ToUpperInvariant()} 文件") { Patterns = new[] { $".{ext}" } }
+            },
+            SuggestedFileName = $"pixelated_{PixelatedWidth}x{PixelatedHeight}"
+        });
+
+        if (file is null) return;
+
+        var path = file.Path.LocalPath;
+        try
+        {
+            await PixelExporter.ExportAsync(
+                PixelatedData, PixelatedWidth, PixelatedHeight,
+                SelectedDisplayMode.Value, ShowCodes, ColorCodeMap,
+                path, format);
         }
         catch (Exception)
         {
