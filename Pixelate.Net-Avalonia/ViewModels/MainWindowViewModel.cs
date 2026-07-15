@@ -844,6 +844,19 @@ public partial class MainWindowViewModel : ObservableObject
             _sourceRgba = new byte[img.Width * img.Height * 4];
             img.CopyPixelDataTo(_sourceRgba);
 
+            // 将半透明像素与白色背景合成，确保所有源像素完全不透明（alpha=255）。
+            // 这样 RGB 值代表实际可见颜色，渲染与导出结果一致。
+            for (int i = 0; i < _sourceRgba.Length; i += 4)
+            {
+                byte a = _sourceRgba[i + 3];
+                if (a == 255) continue;
+                double af = a / 255.0;
+                _sourceRgba[i] = (byte)(_sourceRgba[i] * af + 255 * (1 - af));
+                _sourceRgba[i + 1] = (byte)(_sourceRgba[i + 1] * af + 255 * (1 - af));
+                _sourceRgba[i + 2] = (byte)(_sourceRgba[i + 2] * af + 255 * (1 - af));
+                _sourceRgba[i + 3] = 255;
+            }
+
             // 新图片默认框选全部
             Selection = new Rect(0, 0, 1, 1);
             _appliedSelection = new Rect(0, 0, 1, 1);
