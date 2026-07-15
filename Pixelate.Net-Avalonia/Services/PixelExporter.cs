@@ -61,6 +61,7 @@ public static class PixelExporter
                 for (int x = 0; x < width; x++)
                 {
                     int i = (y * width + x) * 4;
+                    if (rgba[i + 3] == 0) continue; // 跳过已删除像素
                     byte r = rgba[i], g = rgba[i + 1], b = rgba[i + 2];
                     var color = Color.FromRgb(r, g, b);
                     int px = x * PixelSize;
@@ -89,6 +90,7 @@ public static class PixelExporter
                     for (int x = 0; x < width; x++)
                     {
                         int i = (y * width + x) * 4;
+                        if (rgba[i + 3] == 0) continue; // 跳过已删除像素
                         byte r = rgba[i], g = rgba[i + 1], b = rgba[i + 2];
                         uint key = ((uint)r << 16) | ((uint)g << 8) | b;
                         if (!codeMap.TryGetValue(key, out var code))
@@ -133,6 +135,7 @@ public static class PixelExporter
             for (int x = 0; x < width; x++)
             {
                 int i = (y * width + x) * 4;
+                if (rgba[i + 3] == 0) continue; // 跳过已删除像素
                 byte r = rgba[i], g = rgba[i + 1], b = rgba[i + 2];
                 string hex = $"#{r:X2}{g:X2}{b:X2}";
                 double cx = x * PixelSize + half;
@@ -160,6 +163,7 @@ public static class PixelExporter
                 for (int x = 0; x < width; x++)
                 {
                     int i = (y * width + x) * 4;
+                    if (rgba[i + 3] == 0) continue; // 跳过已删除像素
                     byte r = rgba[i], g = rgba[i + 1], b = rgba[i + 2];
                     uint key = ((uint)r << 16) | ((uint)g << 8) | b;
                     if (!codeMap.TryGetValue(key, out var code))
@@ -200,6 +204,7 @@ public static class PixelExporter
             for (int x = 0; x < width; x++)
             {
                 int i = (y * width + x) * 4;
+                if (rgba[i + 3] == 0) continue; // 跳过已删除像素
                 byte r = rgba[i], g = rgba[i + 1], b = rgba[i + 2];
                 var xcolor = XColor.FromArgb(r, g, b);
                 double px = x * PixelSize;
@@ -230,6 +235,7 @@ public static class PixelExporter
                 for (int x = 0; x < width; x++)
                 {
                     int i = (y * width + x) * 4;
+                    if (rgba[i + 3] == 0) continue; // 跳过已删除像素
                     byte r = rgba[i], g = rgba[i + 1], b = rgba[i + 2];
                     uint key = ((uint)r << 16) | ((uint)g << 8) | b;
                     if (!codeMap.TryGetValue(key, out var code))

@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform.Storage;
@@ -417,9 +419,13 @@ public partial class MainWindowViewModel : ObservableObject
 
     /// <summary>删除所有与选中颜色相同的像素（设为透明）。</summary>
     [RelayCommand(CanExecute = nameof(CanDeleteColor))]
-    private void DeleteColor()
+    private async Task DeleteColorAsync()
     {
         if (PixelatedData is null || SelectedDeleteColor is null) return;
+
+        string colorCode = SelectedDeleteColor.BeadColor.Code;
+        bool confirmed = await ShowConfirmDialog($"确定要删除颜色为 {colorCode} 的所有像素吗？");
+        if (!confirmed) return;
 
         var color = SelectedDeleteColor.BeadColor;
         byte targetR = color.R, targetG = color.G, targetB = color.B;
@@ -448,6 +454,80 @@ public partial class MainWindowViewModel : ObservableObject
 
         if (_undoStack.Count == 1)
             UndoCommand.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>显示确认对话框，返回用户是否点击了"确定"。</summary>
+    private static async Task<bool> ShowConfirmDialog(string message)
+    {
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime desktop)
+            return false;
+        var owner = desktop.MainWindow;
+        if (owner is null) return false;
+
+        bool result = false;
+        Window? dialog = null;
+
+        var confirmBtn = new Button
+        {
+            Content = "确定",
+            Padding = new Thickness(24, 6)
+        };
+        confirmBtn.Resources["ButtonBackground"] = new SolidColorBrush(global::Avalonia.Media.Color.FromRgb(0xF4, 0x43, 0x36));
+        confirmBtn.Resources["ButtonBackgroundPointerOver"] = new SolidColorBrush(global::Avalonia.Media.Color.FromRgb(0xFF, 0x5C, 0x5C));
+        confirmBtn.Resources["ButtonBackgroundPressed"] = new SolidColorBrush(global::Avalonia.Media.Color.FromRgb(0xD3, 0x2F, 0x2F));
+        confirmBtn.Resources["ButtonForeground"] = Brushes.White;
+        confirmBtn.Resources["ButtonForegroundPointerOver"] = Brushes.White;
+        confirmBtn.Click += (_, _) => { result = true; dialog?.Close(); };
+
+        var cancelBtn = new Button
+        {
+            Content = "取消",
+            Padding = new Thickness(24, 6)
+        };
+        cancelBtn.Click += (_, _) => { result = false; dialog?.Close(); };
+
+        var grid = new Grid
+        {
+            RowDefinitions = new RowDefinitions("*,Auto")
+        };
+
+        var messageText = new TextBlock
+        {
+            Text = message,
+            TextWrapping = TextWrapping.Wrap,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 0, 16)
+        };
+        Grid.SetRow(messageText, 0);
+        grid.Children.Add(messageText);
+
+        var buttonPanel = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Spacing = 12
+        };
+        Grid.SetRow(buttonPanel, 1);
+        buttonPanel.Children.Add(cancelBtn);
+        buttonPanel.Children.Add(confirmBtn);
+        grid.Children.Add(buttonPanel);
+
+        dialog = new Window
+        {
+            Title = "确认删除",
+            Width = 380,
+            Height = 170,
+            CanResize = false,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Content = new Border
+            {
+                Padding = new Thickness(24),
+                Child = grid
+            }
+        };
+
+        await dialog.ShowDialog(owner);
+        return result;
     }
 
     /// <summary>重新计算当前图像中使用的颜色及数量。</summary>
