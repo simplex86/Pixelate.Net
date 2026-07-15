@@ -102,6 +102,8 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty] private Bitmap? _originalBitmap;
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanEditPixels))]
+    [NotifyPropertyChangedFor(nameof(CanExport))]
+    [NotifyCanExecuteChangedFor(nameof(ExportCommand))]
     private byte[]? _pixelatedData;
     [ObservableProperty] private int _pixelatedWidth;
     [ObservableProperty] private int _pixelatedHeight;
@@ -116,6 +118,7 @@ public partial class MainWindowViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(CanEditPixels))]
     [NotifyPropertyChangedFor(nameof(CanDeletePixels))]
     [NotifyCanExecuteChangedFor(nameof(DeletePixelsCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ExportCommand))]
     private bool _isPixelEditing;
     [ObservableProperty] private IReadOnlyList<PaletteColorItem> _editColors = Array.Empty<PaletteColorItem>();
     [ObservableProperty] private PaletteColorItem? _selectedEditColor;
@@ -132,6 +135,7 @@ public partial class MainWindowViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(DeletePixelsCommand))]
     [NotifyCanExecuteChangedFor(nameof(DeleteColorCommand))]
     [NotifyCanExecuteChangedFor(nameof(EditPixelsCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ExportCommand))]
     private bool _isPixelDeleting;
     [ObservableProperty] private IReadOnlyList<DeleteColorItem> _deleteColors = Array.Empty<DeleteColorItem>();
     [ObservableProperty]
@@ -144,7 +148,10 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty] private Rect _selection = new(0, 0, 1, 1);
 
     /// <summary>是否处于编辑选择框模式。</summary>
-    [ObservableProperty] private bool _isEditing;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanExport))]
+    [NotifyCanExecuteChangedFor(nameof(ExportCommand))]
+    private bool _isEditing;
 
     private DisplayModeOption _selectedDisplayMode;
     public DisplayModeOption SelectedDisplayMode
@@ -235,7 +242,7 @@ public partial class MainWindowViewModel : ObservableObject
     public bool CanShowCodes => _selectedBrand?.Value != BeadBrand.None;
 
     /// <summary>是否可导出：需已有像素化结果且未处于编辑/删除模式。</summary>
-    public bool CanExport => PixelatedData is not null && !IsPixelEditing && !IsPixelDeleting;
+    public bool CanExport => PixelatedData is not null && !IsEditing && !IsPixelEditing && !IsPixelDeleting;
 
     // 已加载的源像素数据，供反复生成使用。
     private byte[]? _sourceRgba;
