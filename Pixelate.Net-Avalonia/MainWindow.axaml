@@ -4,7 +4,7 @@
         xmlns:controls="using:Pixelate.Net.Avalonia.Controls"
         x:Class="Pixelate.Net.Avalonia.MainWindow"
         x:DataType="vm:MainWindowViewModel"
-        Title="拼豆像素画生成器 v0.5.14"
+        Title="拼豆像素画生成器 v0.6.16"
         Width="1280" Height="960"
         MinWidth="1280" MinHeight="960"
         WindowStartupLocation="CenterScreen"
@@ -21,7 +21,7 @@
 
             <!-- 左列：正常视图 / 像素编辑面板 -->
             <Grid Grid.Column="0">
-              <Grid RowDefinitions="320,8,*" IsVisible="{Binding !IsPixelEditing}">
+              <Grid RowDefinitions="320,8,*" IsVisible="{Binding IsNormalView}">
 
                 <!-- 上：选择图片按钮 + 原图 + 编辑按钮 -->
                 <Grid Grid.Row="0" RowDefinitions="Auto,*,Auto">
@@ -202,20 +202,36 @@
                                 </ComboBox>
                             </StackPanel>
 
-                            <Button Grid.Row="1"
-                                    Content="编辑像素"
-                                    Command="{Binding EditPixelsCommand}"
-                                    HorizontalAlignment="Stretch"
-                                    HorizontalContentAlignment="Center"
-                                    Padding="14,16">
-									<Button.Resources>
-										<SolidColorBrush x:Key="ButtonBackground" Color="#4CAF50" />
-										<SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#5DBD5D" />
-										<SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#3D9140" />
-										<SolidColorBrush x:Key="ButtonForeground" Color="White" />
-										<SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="White" />
-									</Button.Resources>
-								</Button>
+                            <Grid Grid.Row="1" ColumnDefinitions="*,8,*">
+                                <Button Grid.Column="0"
+                                        Content="编辑像素"
+                                        Command="{Binding EditPixelsCommand}"
+                                        HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Center"
+                                        Padding="14,16">
+                                    <Button.Resources>
+                                        <SolidColorBrush x:Key="ButtonBackground" Color="#4CAF50" />
+                                        <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#5DBD5D" />
+                                        <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#3D9140" />
+                                        <SolidColorBrush x:Key="ButtonForeground" Color="White" />
+                                        <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="White" />
+                                    </Button.Resources>
+                                </Button>
+                                <Button Grid.Column="2"
+                                        Content="删除像素"
+                                        Command="{Binding DeletePixelsCommand}"
+                                        HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Center"
+                                        Padding="14,16">
+                                    <Button.Resources>
+                                        <SolidColorBrush x:Key="ButtonBackground" Color="#FF9800" />
+                                        <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#FFB733" />
+                                        <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#CC8400" />
+                                        <SolidColorBrush x:Key="ButtonForeground" Color="White" />
+                                        <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="White" />
+                                    </Button.Resources>
+                                </Button>
+                            </Grid>
                         </Grid>
                     </Border>
                 </Grid>
@@ -223,10 +239,17 @@
 
               <!-- 像素编辑面板 -->
               <Grid RowDefinitions="Auto,*,Auto" IsVisible="{Binding IsPixelEditing}">
-                  <TextBlock Grid.Row="0"
-                             Text="{Binding SelectedBrand.DisplayName}"
-                             FontWeight="SemiBold"
-                             Margin="0,0,0,8" />
+                  <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
+                      <TextBlock Grid.Column="0"
+                                 Text="{Binding SelectedBrand.DisplayName}"
+                                 FontWeight="SemiBold"
+                                 VerticalAlignment="Center" />
+                      <ToggleButton Grid.Column="1"
+                                    Content="取色"
+                                    Classes="accent"
+                                    IsChecked="{Binding IsEyedropping}"
+                                    Padding="14,6" />
+                  </Grid>
                   <Border Grid.Row="1"
                           Background="#FAFAFA"
                           BorderBrush="#D0D0D0"
@@ -265,17 +288,112 @@
                           </ListBox.Styles>
                       </ListBox>
                   </Border>
-                  <Grid Grid.Row="2" ColumnDefinitions="Auto,*,Auto" Margin="0,8,0,0">
-                      <ToggleButton Grid.Column="0"
+                  <StackPanel Grid.Row="2"
+                              Orientation="Horizontal"
+                              Spacing="8"
+                              HorizontalAlignment="Right"
+                              Margin="0,8,0,0">
+                      <Button Content="取消"
+                              Command="{Binding CancelEditPixelsCommand}"
+                              Padding="24,6">
+                          <Button.Resources>
+                              <SolidColorBrush x:Key="ButtonBackground" Color="#FF6B6B" />
+                              <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#FF8585" />
+                              <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#E04848" />
+                              <SolidColorBrush x:Key="ButtonForeground" Color="White" />
+                              <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="White" />
+                          </Button.Resources>
+                      </Button>
+                      <Button Content="应用"
+                              Command="{Binding ApplyEditPixelsCommand}"
+                              Padding="24,6">
+                          <Button.Resources>
+                              <SolidColorBrush x:Key="ButtonBackground" Color="#FFA500" />
+                              <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#FFB733" />
+                              <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#CC8400" />
+                              <SolidColorBrush x:Key="ButtonForeground" Color="White" />
+                              <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="White" />
+                          </Button.Resources>
+                      </Button>
+                  </StackPanel>
+              </Grid>
+
+              <!-- 像素删除面板 -->
+              <Grid RowDefinitions="Auto,*,Auto" IsVisible="{Binding IsPixelDeleting}">
+                  <!-- 顶部：色卡模式 + 取色按钮 -->
+                  <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
+                      <TextBlock Grid.Column="0"
+                                 Text="{Binding SelectedBrand.DisplayName}"
+                                 FontWeight="SemiBold"
+                                 VerticalAlignment="Center" />
+                      <ToggleButton Grid.Column="1"
                                     Content="取色"
-									Classes="accent"
+                                    Classes="accent"
                                     IsChecked="{Binding IsEyedropping}"
                                     Padding="14,6" />
+                  </Grid>
+
+                  <!-- 颜色列表 -->
+                  <Border Grid.Row="1"
+                          Background="#FAFAFA"
+                          BorderBrush="#D0D0D0"
+                          BorderThickness="1"
+                          CornerRadius="4"
+                          Padding="6">
+                      <ListBox ItemsSource="{Binding DeleteColors}"
+                               SelectedItem="{Binding SelectedDeleteColor, Mode=TwoWay}"
+                               Background="Transparent"
+                               BorderThickness="0">
+                          <ListBox.ItemTemplate>
+                              <DataTemplate x:DataType="vm:DeleteColorItem">
+                                  <Grid ColumnDefinitions="Auto,*,Auto">
+                                      <Border Grid.Column="0" Width="18" Height="18"
+                                              Background="{Binding Brush}"
+                                              BorderBrush="#C0C0C0"
+                                              BorderThickness="1"
+                                              CornerRadius="2"
+                                              Margin="0,0,6,0" />
+                                      <TextBlock Grid.Column="1"
+                                                 Text="{Binding DisplayName}"
+                                                 FontSize="12"
+                                                 TextTrimming="CharacterEllipsis"
+                                                 VerticalAlignment="Center" />
+                                      <TextBlock Grid.Column="2"
+                                                 Text="{Binding Count}"
+                                                 FontSize="12"
+                                                 VerticalAlignment="Center"
+                                                 Margin="8,0,0,0" />
+                                  </Grid>
+                              </DataTemplate>
+                          </ListBox.ItemTemplate>
+                          <ListBox.Styles>
+                              <Style Selector="ListBoxItem">
+                                  <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                  <Setter Property="Padding" Value="4,2" />
+                              </Style>
+                          </ListBox.Styles>
+                      </ListBox>
+                  </Border>
+
+                  <!-- 底部：删除 + 取消/应用 -->
+                  <Grid Grid.Row="2" ColumnDefinitions="Auto,*,Auto" Margin="0,8,0,0">
+                      <Button Grid.Column="0"
+                              Content="删除"
+                              Command="{Binding DeleteColorCommand}"
+                              Padding="14,6">
+                          <Button.Resources>
+                              <SolidColorBrush x:Key="ButtonBackground" Color="#F44336" />
+                              <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#FF5C5C" />
+                              <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#D32F2F" />
+                              <SolidColorBrush x:Key="ButtonForeground" Color="White" />
+                              <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="White" />
+                          </Button.Resources>
+                      </Button>
                       <StackPanel Grid.Column="2"
                                   Orientation="Horizontal"
                                   Spacing="8">
                           <Button Content="取消"
-                                  Command="{Binding CancelEditPixelsCommand}"
+                                  Command="{Binding CancelDeletePixelsCommand}"
                                   Padding="24,6">
                               <Button.Resources>
                                   <SolidColorBrush x:Key="ButtonBackground" Color="#FF6B6B" />
@@ -286,7 +404,7 @@
                               </Button.Resources>
                           </Button>
                           <Button Content="应用"
-                                  Command="{Binding ApplyEditPixelsCommand}"
+                                  Command="{Binding ApplyDeletePixelsCommand}"
                                   Padding="24,6">
                               <Button.Resources>
                                   <SolidColorBrush x:Key="ButtonBackground" Color="#FFA500" />
@@ -312,7 +430,7 @@
                                                GridWidth="{Binding PixelatedWidth}"
                                                GridHeight="{Binding PixelatedHeight}"
                                                DisplayMode="{Binding SelectedDisplayMode.Value}"
-                                               IsEditable="{Binding IsPixelEditing}"
+                                               IsEditable="{Binding IsPixelInteractive}"
                                                IsEyedropping="{Binding IsEyedropping}"
                                                ShowCodes="{Binding ShowCodes}"
                                                ColorCodeMap="{Binding ColorCodeMap}"

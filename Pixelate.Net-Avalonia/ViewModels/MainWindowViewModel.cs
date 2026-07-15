@@ -49,6 +49,25 @@ public sealed class PaletteColorItem
     }
 }
 
+/// <summary>
+/// 删除像素面板的颜色项（带数量）。
+/// </summary>
+public sealed class DeleteColorItem
+{
+    public BeadColor BeadColor { get; }
+    public string DisplayName { get; }
+    public IBrush Brush { get; }
+    public int Count { get; }
+
+    public DeleteColorItem(BeadColor color, int count)
+    {
+        BeadColor = color;
+        DisplayName = color.Code == color.Name ? color.Code : $"{color.Code} {color.Name}";
+        Brush = new SolidColorBrush(global::Avalonia.Media.Color.FromRgb(color.R, color.G, color.B));
+        Count = count;
+    }
+}
+
 public partial class MainWindowViewModel : ObservableObject
 {
     public ProcessModeOption[] Modes { get; } =
@@ -90,12 +109,32 @@ public partial class MainWindowViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanExport))]
+    [NotifyPropertyChangedFor(nameof(IsPixelInteractive))]
+    [NotifyPropertyChangedFor(nameof(IsNormalView))]
+    [NotifyPropertyChangedFor(nameof(CanEditPixels))]
+    [NotifyPropertyChangedFor(nameof(CanDeletePixels))]
+    [NotifyCanExecuteChangedFor(nameof(DeletePixelsCommand))]
     private bool _isPixelEditing;
     [ObservableProperty] private IReadOnlyList<PaletteColorItem> _editColors = Array.Empty<PaletteColorItem>();
     [ObservableProperty] private PaletteColorItem? _selectedEditColor;
     [ObservableProperty] private bool _showCodes;
     [ObservableProperty] private bool _isEyedropping;
     [ObservableProperty] private IReadOnlyDictionary<uint, string>? _colorCodeMap;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanExport))]
+    [NotifyPropertyChangedFor(nameof(IsPixelInteractive))]
+    [NotifyPropertyChangedFor(nameof(IsNormalView))]
+    [NotifyPropertyChangedFor(nameof(CanEditPixels))]
+    [NotifyPropertyChangedFor(nameof(CanDeletePixels))]
+    [NotifyCanExecuteChangedFor(nameof(DeletePixelsCommand))]
+    [NotifyCanExecuteChangedFor(nameof(DeleteColorCommand))]
+    [NotifyCanExecuteChangedFor(nameof(EditPixelsCommand))]
+    private bool _isPixelDeleting;
+    [ObservableProperty] private IReadOnlyList<DeleteColorItem> _deleteColors = Array.Empty<DeleteColorItem>();
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(DeleteColorCommand))]
+    private DeleteColorItem? _selectedDeleteColor;
 
     [ObservableProperty] private bool _useDither;
 
@@ -157,8 +196,10 @@ public partial class MainWindowViewModel : ObservableObject
                 OnPropertyChanged(nameof(IsThresholdEnabled));
                 OnPropertyChanged(nameof(IsThresholdControlsEnabled));
                 OnPropertyChanged(nameof(CanEditPixels));
+                OnPropertyChanged(nameof(CanDeletePixels));
                 OnPropertyChanged(nameof(CanShowCodes));
                 EditPixelsCommand.NotifyCanExecuteChanged();
+                DeletePixelsCommand.NotifyCanExecuteChanged();
                 _ = AutoGenerateAsync();
             }
         }
@@ -170,17 +211,29 @@ public partial class MainWindowViewModel : ObservableObject
     /// <summary>阈值具体控件（Slider/NumericUpDown/重置）是否可用：需同时满足自由色模式且勾选手动阈值。</summary>
     public bool IsThresholdControlsEnabled => IsThresholdEnabled && UseManualThreshold;
 
-    /// <summary>是否可进入像素编辑：需已有像素化结果且选中了品牌色卡。</summary>
-    public bool CanEditPixels => PixelatedData is not null && _selectedBrand?.Value != BeadBrand.None;
+    /// <summary>是否处于正常视图（非编辑、非删除模式）。</summary>
+    public bool IsNormalView => !IsPixelEditing && !IsPixelDeleting;
 
-    /// <summary>是否可撤销：处于像素编辑中且 undo 栈非空。</summary>
-    public bool CanUndo => IsPixelEditing && _undoStack.Count > 0;
+    /// <summary>像素网格是否可交互（编辑或删除模式）。</summary>
+    public bool IsPixelInteractive => IsPixelEditing || IsPixelDeleting;
+
+    /// <summary>是否可进入像素编辑：需已有像素化结果、选中了品牌色卡且未处于删除模式。</summary>
+    public bool CanEditPixels => PixelatedData is not null && _selectedBrand?.Value != BeadBrand.None && !IsPixelDeleting;
+
+    /// <summary>是否可进入像素删除：需已有像素化结果、选中了品牌色卡且未处于编辑模式。</summary>
+    public bool CanDeletePixels => PixelatedData is not null && _selectedBrand?.Value != BeadBrand.None && !IsPixelEditing;
+
+    /// <summary>是否可删除选中颜色：处于删除模式且选中了颜色。</summary>
+    public bool CanDeleteColor => IsPixelDeleting && SelectedDeleteColor is not null;
+
+    /// <summary>是否可撤销：处于编辑或删除模式且 undo 栈非空。</summary>
+    public bool CanUndo => (IsPixelEditing || IsPixelDeleting) && _undoStack.Count > 0;
 
     /// <summary>是否可显示颜色编码：需选中了品牌色卡。</summary>
     public bool CanShowCodes => _selectedBrand?.Value != BeadBrand.None;
 
-    /// <summary>是否可导出：需已有像素化结果且未处于像素编辑模式。</summary>
-    public bool CanExport => PixelatedData is not null && !IsPixelEditing;
+    /// <summary>是否可导出：需已有像素化结果且未处于编辑/删除模式。</summary>
+    public bool CanExport => PixelatedData is not null && !IsPixelEditing && !IsPixelDeleting;
 
     // 已加载的源像素数据，供反复生成使用。
     private byte[]? _sourceRgba;
@@ -194,10 +247,14 @@ public partial class MainWindowViewModel : ObservableObject
     private bool _needsThresholdUpdate = true;
     // 像素编辑前的快照，供取消时恢复。
     private byte[]? _pixelEditBackup;
-    // 像素编辑撤销栈：(像素索引, 旧R, 旧G, 旧B)。
-    private readonly Stack<(int index, byte r, byte g, byte b)> _undoStack = new();
-    // 取色用 RGB→PaletteColorItem 查找表。
+    // 像素删除前的快照，供取消时恢复。
+    private byte[]? _pixelDeleteBackup;
+    // 撤销栈：每项为一次操作的若干像素变更 (像素索引, 旧R, 旧G, 旧B, 旧A)。
+    private readonly Stack<List<(int index, byte r, byte g, byte b, byte a)>> _undoStack = new();
+    // 取色用 RGB→PaletteColorItem 查找表（编辑模式）。
     private Dictionary<uint, PaletteColorItem> _colorToItemMap = new();
+    // 取色用 RGB→DeleteColorItem 查找表（删除模式）。
+    private Dictionary<uint, DeleteColorItem> _deleteColorToItemMap = new();
     // 自动生成控制：_suppressAutoGenerate 防止 LoadImage 批量赋值时重复触发，
     // _isGenerating 防止 GenerateAsync 内部改 ColorMergeThreshold 导致递归。
     private bool _suppressAutoGenerate;
@@ -213,6 +270,7 @@ public partial class MainWindowViewModel : ObservableObject
     partial void OnPixelatedDataChanged(byte[]? value)
     {
         EditPixelsCommand.NotifyCanExecuteChanged();
+        DeletePixelsCommand.NotifyCanExecuteChanged();
         ExportCommand.NotifyCanExecuteChanged();
     }
 
@@ -222,7 +280,7 @@ public partial class MainWindowViewModel : ObservableObject
     /// <summary>参数变化时自动重新生成像素化结果。</summary>
     private async Task AutoGenerateAsync()
     {
-        if (_suppressAutoGenerate || _isGenerating || _sourceRgba is null || IsPixelEditing) return;
+        if (_suppressAutoGenerate || _isGenerating || _sourceRgba is null || IsPixelEditing || IsPixelDeleting) return;
         await GenerateAsync();
     }
 
@@ -315,18 +373,165 @@ public partial class MainWindowViewModel : ObservableObject
         UndoCommand.NotifyCanExecuteChanged();
     }
 
+    /// <summary>进入像素删除模式，备份当前结果并加载图像中已使用的颜色列表。</summary>
+    [RelayCommand(CanExecute = nameof(CanDeletePixels))]
+    private void DeletePixels()
+    {
+        _pixelDeleteBackup = PixelatedData;
+        _undoStack.Clear();
+        IsEyedropping = false;
+        IsPixelDeleting = true;
+        RefreshDeleteColors();
+        UndoCommand.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>取消像素删除，恢复删除前的像素化结果。</summary>
+    [RelayCommand]
+    private void CancelDeletePixels()
+    {
+        if (_pixelDeleteBackup is not null)
+            PixelatedData = _pixelDeleteBackup;
+        _pixelDeleteBackup = null;
+        _undoStack.Clear();
+        _deleteColorToItemMap.Clear();
+        IsEyedropping = false;
+        DeleteColors = Array.Empty<DeleteColorItem>();
+        SelectedDeleteColor = null;
+        IsPixelDeleting = false;
+        UndoCommand.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>应用像素删除，保留修改后的结果。</summary>
+    [RelayCommand]
+    private void ApplyDeletePixels()
+    {
+        _pixelDeleteBackup = null;
+        _undoStack.Clear();
+        _deleteColorToItemMap.Clear();
+        IsEyedropping = false;
+        DeleteColors = Array.Empty<DeleteColorItem>();
+        SelectedDeleteColor = null;
+        IsPixelDeleting = false;
+        UndoCommand.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>删除所有与选中颜色相同的像素（设为透明）。</summary>
+    [RelayCommand(CanExecute = nameof(CanDeleteColor))]
+    private void DeleteColor()
+    {
+        if (PixelatedData is null || SelectedDeleteColor is null) return;
+
+        var color = SelectedDeleteColor.BeadColor;
+        byte targetR = color.R, targetG = color.G, targetB = color.B;
+        var data = PixelatedData;
+        var changes = new List<(int, byte, byte, byte, byte)>();
+        byte[] newData = (byte[])data.Clone();
+
+        int total = PixelatedWidth * PixelatedHeight;
+        for (int i = 0; i < total; i++)
+        {
+            int idx = i * 4;
+            // 仅删除未删除的像素（alpha>0）且颜色匹配
+            if (data[idx + 3] == 0) continue;
+            if (data[idx] == targetR && data[idx + 1] == targetG && data[idx + 2] == targetB)
+            {
+                changes.Add((idx, data[idx], data[idx + 1], data[idx + 2], data[idx + 3]));
+                newData[idx + 3] = 0; // 设为透明
+            }
+        }
+
+        if (changes.Count == 0) return;
+
+        _undoStack.Push(changes);
+        PixelatedData = newData;
+        RefreshDeleteColors();
+
+        if (_undoStack.Count == 1)
+            UndoCommand.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>重新计算当前图像中使用的颜色及数量。</summary>
+    private void RefreshDeleteColors()
+    {
+        if (PixelatedData is null || _selectedBrand is null)
+        {
+            DeleteColors = Array.Empty<DeleteColorItem>();
+            _deleteColorToItemMap.Clear();
+            SelectedDeleteColor = null;
+            return;
+        }
+
+        var brand = _selectedBrand.Value;
+        var palette = BeadPalettes.Get(brand);
+        var paletteMap = new Dictionary<uint, BeadColor>(palette.Count);
+        foreach (var c in palette)
+            paletteMap[((uint)c.R << 16) | ((uint)c.G << 8) | c.B] = c;
+
+        // 统计每种颜色的像素数量（跳过已删除的像素）
+        var counts = new Dictionary<uint, int>();
+        var data = PixelatedData;
+        int total = PixelatedWidth * PixelatedHeight;
+        for (int i = 0; i < total; i++)
+        {
+            int idx = i * 4;
+            if (data[idx + 3] == 0) continue;
+            uint key = ((uint)data[idx] << 16) | ((uint)data[idx + 1] << 8) | data[idx + 2];
+            counts[key] = counts.TryGetValue(key, out var c) ? c + 1 : 1;
+        }
+
+        // 构建颜色列表
+        var items = new List<DeleteColorItem>(counts.Count);
+        var newMap = new Dictionary<uint, DeleteColorItem>(counts.Count);
+        foreach (var (key, count) in counts)
+        {
+            if (paletteMap.TryGetValue(key, out var beadColor))
+            {
+                var item = new DeleteColorItem(beadColor, count);
+                items.Add(item);
+                newMap[key] = item;
+            }
+        }
+
+        // 按数量降序排列
+        items.Sort((a, b) => b.Count.CompareTo(a.Count));
+
+        // 保留当前选择
+        DeleteColorItem? newSelection = null;
+        if (SelectedDeleteColor is not null)
+        {
+            uint selKey = ((uint)SelectedDeleteColor.BeadColor.R << 16) |
+                          ((uint)SelectedDeleteColor.BeadColor.G << 8) |
+                          SelectedDeleteColor.BeadColor.B;
+            newMap.TryGetValue(selKey, out newSelection);
+        }
+        if (newSelection is null && items.Count > 0)
+            newSelection = items[0];
+
+        _deleteColorToItemMap = newMap;
+        DeleteColors = items;
+        SelectedDeleteColor = newSelection;
+    }
+
     /// <summary>撤销最近一次像素修改。</summary>
     [RelayCommand(CanExecute = nameof(CanUndo))]
     private void Undo()
     {
         if (_undoStack.Count == 0 || PixelatedData is null) return;
 
-        var (index, r, g, b) = _undoStack.Pop();
+        var changes = _undoStack.Pop();
         byte[] newData = (byte[])PixelatedData.Clone();
-        newData[index] = r;
-        newData[index + 1] = g;
-        newData[index + 2] = b;
+        foreach (var (index, r, g, b, a) in changes)
+        {
+            newData[index] = r;
+            newData[index + 1] = g;
+            newData[index + 2] = b;
+            newData[index + 3] = a;
+        }
         PixelatedData = newData;
+
+        // 删除模式下需要刷新颜色列表
+        if (IsPixelDeleting)
+            RefreshDeleteColors();
 
         if (_undoStack.Count == 0)
             UndoCommand.NotifyCanExecuteChanged();
@@ -335,37 +540,60 @@ public partial class MainWindowViewModel : ObservableObject
     /// <summary>处理像素点击：取色模式下拾取颜色，编辑模式下修改像素。</summary>
     public void SetPixel(int x, int y)
     {
-        if (!IsPixelEditing || PixelatedData is null) return;
+        if (PixelatedData is null) return;
         if (x < 0 || x >= PixelatedWidth || y < 0 || y >= PixelatedHeight) return;
+        if (!IsPixelEditing && !IsPixelDeleting) return;
 
+        // 取色模式（编辑和删除共用）
         if (IsEyedropping)
         {
             var data = PixelatedData;
             int index = (y * PixelatedWidth + x) * 4;
+            // 跳过已删除的像素（alpha=0）
+            if (data[index + 3] == 0) return;
             uint key = ((uint)data[index] << 16) | ((uint)data[index + 1] << 8) | data[index + 2];
-            if (_colorToItemMap.TryGetValue(key, out var item))
+
+            if (IsPixelEditing)
             {
-                SelectedEditColor = item;
-                IsEyedropping = false;
+                if (_colorToItemMap.TryGetValue(key, out var item))
+                {
+                    SelectedEditColor = item;
+                    IsEyedropping = false;
+                }
+            }
+            else // IsPixelDeleting
+            {
+                if (_deleteColorToItemMap.TryGetValue(key, out var item))
+                {
+                    SelectedDeleteColor = item;
+                    IsEyedropping = false;
+                }
             }
             return;
         }
 
-        if (SelectedEditColor is null) return;
+        // 编辑模式：绘制像素
+        if (IsPixelEditing)
+        {
+            if (SelectedEditColor is null) return;
 
-        var data2 = PixelatedData;
-        int idx = (y * PixelatedWidth + x) * 4;
-        _undoStack.Push((idx, data2[idx], data2[idx + 1], data2[idx + 2]));
+            var data2 = PixelatedData;
+            int idx = (y * PixelatedWidth + x) * 4;
+            _undoStack.Push(new List<(int, byte, byte, byte, byte)>
+            {
+                (idx, data2[idx], data2[idx + 1], data2[idx + 2], data2[idx + 3])
+            });
 
-        var color = SelectedEditColor.BeadColor;
-        byte[] newData = (byte[])data2.Clone();
-        newData[idx] = color.R;
-        newData[idx + 1] = color.G;
-        newData[idx + 2] = color.B;
-        PixelatedData = newData;
+            var color = SelectedEditColor.BeadColor;
+            byte[] newData = (byte[])data2.Clone();
+            newData[idx] = color.R;
+            newData[idx + 1] = color.G;
+            newData[idx + 2] = color.B;
+            PixelatedData = newData;
 
-        if (_undoStack.Count == 1)
-            UndoCommand.NotifyCanExecuteChanged();
+            if (_undoStack.Count == 1)
+                UndoCommand.NotifyCanExecuteChanged();
+        }
     }
 
     [RelayCommand(CanExecute = nameof(CanGenerate))]

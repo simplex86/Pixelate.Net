@@ -76,6 +76,8 @@ public class PixelGridControl : Control
     private readonly Dictionary<uint, IBrush> _brushCache = new();
     private static readonly IBrush GridBrush = new SolidColorBrush(0x88888888);
     private static readonly IPen GridPen = new Pen(GridBrush, 1);
+    // 被删除像素（alpha=0）的显示颜色
+    private static readonly IBrush DeletedBrush = new SolidColorBrush(0xFFFFFFFF);
 
     public byte[]? PixelData
     {
@@ -162,7 +164,7 @@ public class PixelGridControl : Control
                     for (int x = 0; x < GridWidth; x++)
                     {
                         int i = (y * GridWidth + x) * 4;
-                        var brush = GetBrush(data[i], data[i + 1], data[i + 2], data[i + 3]);
+                        var brush = data[i + 3] == 0 ? DeletedBrush : GetBrush(data[i], data[i + 1], data[i + 2], data[i + 3]);
                         var rect = new Rect(x * cw, y * ch, cw, ch);
                         context.DrawRectangle(brush, null, rect);
                     }
@@ -187,7 +189,7 @@ public class PixelGridControl : Control
                     for (int x = 0; x < GridWidth; x++)
                     {
                         int i = (y * GridWidth + x) * 4;
-                        var brush = GetBrush(data[i], data[i + 1], data[i + 2], data[i + 3]);
+                        var brush = data[i + 3] == 0 ? DeletedBrush : GetBrush(data[i], data[i + 1], data[i + 2], data[i + 3]);
                         var rect = new Rect(x * cw, y * ch, cw, ch);
                         context.DrawEllipse(brush, null, rect);
                     }
@@ -202,6 +204,8 @@ public class PixelGridControl : Control
                     for (int x = 0; x < GridWidth; x++)
                     {
                         int i = (y * GridWidth + x) * 4;
+                        // 被删除的像素不绘制空环
+                        if (data[i + 3] == 0) continue;
                         var brush = GetBrush(data[i], data[i + 1], data[i + 2], data[i + 3]);
                         var rect = new Rect(x * cw + inset, y * ch + inset, cw - strokeWidth, ch - strokeWidth);
                         context.DrawEllipse(null, new Pen(brush, strokeWidth), rect);
@@ -219,6 +223,8 @@ public class PixelGridControl : Control
                     {
                         int i = (y * GridWidth + x) * 4;
                         byte r = data[i], g = data[i + 1], b = data[i + 2];
+                        // 跳过已删除的像素（alpha=0）
+                        if (data[i + 3] == 0) continue;
                         uint key = ((uint)r << 16) | ((uint)g << 8) | b;
                         if (!ColorCodeMap.TryGetValue(key, out var code))
                             continue;
