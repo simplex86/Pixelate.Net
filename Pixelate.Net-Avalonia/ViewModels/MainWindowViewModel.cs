@@ -400,6 +400,7 @@ public partial class MainWindowViewModel : ObservableObject
         DeleteColors = Array.Empty<DeleteColorItem>();
         SelectedDeleteColor = null;
         IsPixelDeleting = false;
+        RefreshBeadCount();
         UndoCommand.NotifyCanExecuteChanged();
     }
 
@@ -451,6 +452,7 @@ public partial class MainWindowViewModel : ObservableObject
         _undoStack.Push(changes);
         PixelatedData = newData;
         RefreshDeleteColors();
+        RefreshBeadCount();
 
         if (_undoStack.Count == 1)
             UndoCommand.NotifyCanExecuteChanged();
@@ -609,12 +611,28 @@ public partial class MainWindowViewModel : ObservableObject
         }
         PixelatedData = newData;
 
-        // 删除模式下需要刷新颜色列表
+        // 删除模式下需要刷新颜色列表和拼豆总数
         if (IsPixelDeleting)
+        {
             RefreshDeleteColors();
+            RefreshBeadCount();
+        }
 
         if (_undoStack.Count == 0)
             UndoCommand.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>根据当前 PixelatedData 中未删除的像素数量刷新拼豆总数。</summary>
+    private void RefreshBeadCount()
+    {
+        if (PixelatedData is null) return;
+        int count = 0;
+        int total = PixelatedWidth * PixelatedHeight;
+        for (int i = 0; i < total; i++)
+        {
+            if (PixelatedData[i * 4 + 3] != 0) count++;
+        }
+        BeadCount = $"拼豆总数: {count}";
     }
 
     /// <summary>处理像素点击：取色模式下拾取颜色，编辑模式下修改像素。</summary>
