@@ -36,6 +36,12 @@ namespace Pixelate.Net
         public ProcessMode Mode { get; set; } = ProcessMode.Realistic;
 
         /// <summary>
+        /// 是否启用 Floyd-Steinberg 抖动。仅在 Realistic 模式且有调色板时生效。
+        /// 将量化误差按 7:3:5:1 比例扩散到相邻块，改善渐变表现。
+        /// </summary>
+        public bool Dither { get; set; } = false;
+
+        /// <summary>
         /// 拼豆品牌色卡。None = 自由色（用 ColorMergeThreshold 任意聚类）；
         /// 其他值 = 把每个色块映射到该品牌官方色卡的最近色号，此时 ColorMergeThreshold 被忽略。
         /// </summary>

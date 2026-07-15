@@ -97,6 +97,8 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty] private bool _isEyedropping;
     [ObservableProperty] private IReadOnlyDictionary<uint, string>? _colorCodeMap;
 
+    [ObservableProperty] private bool _useDither;
+
     /// <summary>选择框（归一化坐标 0~1），与控件双向绑定。</summary>
     [ObservableProperty] private Rect _selection = new(0, 0, 1, 1);
 
@@ -115,21 +117,33 @@ public partial class MainWindowViewModel : ObservableObject
     public double HorizontalSplits
     {
         get => _horizontalSplits;
-        set => SetProperty(ref _horizontalSplits, Math.Max(1, value));
+        set
+        {
+            if (SetProperty(ref _horizontalSplits, Math.Max(1, value)))
+                _ = AutoGenerateAsync();
+        }
     }
 
     private double _colorMergeThreshold = 30;
     public double ColorMergeThreshold
     {
         get => _colorMergeThreshold;
-        set => SetProperty(ref _colorMergeThreshold, Math.Max(0, Math.Min(100, value)));
+        set
+        {
+            if (SetProperty(ref _colorMergeThreshold, Math.Max(0, Math.Min(100, value))))
+                _ = AutoGenerateAsync();
+        }
     }
 
     private ProcessModeOption _selectedMode;
     public ProcessModeOption SelectedMode
     {
         get => _selectedMode;
-        set => SetProperty(ref _selectedMode, value);
+        set
+        {
+            if (SetProperty(ref _selectedMode, value))
+                _ = AutoGenerateAsync();
+        }
     }
 
     private BeadBrandOption _selectedBrand;
@@ -145,6 +159,7 @@ public partial class MainWindowViewModel : ObservableObject
                 OnPropertyChanged(nameof(CanEditPixels));
                 OnPropertyChanged(nameof(CanShowCodes));
                 EditPixelsCommand.NotifyCanExecuteChanged();
+                _ = AutoGenerateAsync();
             }
         }
     }
@@ -183,6 +198,10 @@ public partial class MainWindowViewModel : ObservableObject
     private readonly Stack<(int index, byte r, byte g, byte b)> _undoStack = new();
     // 取色用 RGB→PaletteColorItem 查找表。
     private Dictionary<uint, PaletteColorItem> _colorToItemMap = new();
+    // 自动生成控制：_suppressAutoGenerate 防止 LoadImage 批量赋值时重复触发，
+    // _isGenerating 防止 GenerateAsync 内部改 ColorMergeThreshold 导致递归。
+    private bool _suppressAutoGenerate;
+    private bool _isGenerating;
 
     public MainWindowViewModel()
     {
@@ -195,6 +214,16 @@ public partial class MainWindowViewModel : ObservableObject
     {
         EditPixelsCommand.NotifyCanExecuteChanged();
         ExportCommand.NotifyCanExecuteChanged();
+    }
+
+    partial void OnUseDitherChanged(bool value) => _ = AutoGenerateAsync();
+    partial void OnUseManualThresholdChanged(bool value) => _ = AutoGenerateAsync();
+
+    /// <summary>参数变化时自动重新生成像素化结果。</summary>
+    private async Task AutoGenerateAsync()
+    {
+        if (_suppressAutoGenerate || _isGenerating || _sourceRgba is null || IsPixelEditing) return;
+        await GenerateAsync();
     }
 
     private bool CanGenerate => _sourceRgba is not null;
@@ -342,42 +371,45 @@ public partial class MainWindowViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanGenerate))]
     private async Task GenerateAsync()
     {
-        if (_sourceRgba is null) return;
-
-        var (cropData, cropW, cropH) = ExtractCropData();
-        if (cropW <= 0 || cropH <= 0) return;
-
-        // 若需要重算自动阈值（裁剪变化时），无论手动/自动模式都更新 _autoThreshold，
-        // 以便 Reset 按钮能重置到当前裁剪区域对应的自动阈值；
-        // 仅在自动模式下同步更新控件显示值。
-        if (_needsThresholdUpdate)
-        {
-            byte[] cd = cropData;
-            _autoThreshold = await Task.Run(() => ImagePixelator.ComputeAutoThreshold(cd, cropW, cropH));
-            if (!UseManualThreshold)
-            {
-                ColorMergeThreshold = _autoThreshold;
-            }
-            _needsThresholdUpdate = false;
-        }
-
-        int hs = (int)Math.Round(HorizontalSplits);
-        if (hs < 1) hs = 1;
-        int threshold = UseManualThreshold ? (int)Math.Round(ColorMergeThreshold) : _autoThreshold;
-        if (threshold < 0) threshold = 0;
-        if (threshold > 100) threshold = 100;
-        var mode = _selectedMode?.Value ?? ProcessMode.Realistic;
-
-        var options = new PixelateOptions
-        {
-            HorizontalSplits = hs,
-            ColorMergeThreshold = threshold,
-            Mode = mode,
-            Brand = _selectedBrand?.Value ?? BeadBrand.None
-        };
-
+        if (_sourceRgba is null || _isGenerating) return;
+        _isGenerating = true;
         try
         {
+            var (cropData, cropW, cropH) = ExtractCropData();
+            if (cropW <= 0 || cropH <= 0) return;
+
+            // 若需要重算自动阈值（裁剪变化时），无论手动/自动模式都更新 _autoThreshold，
+            // 以便 Reset 按钮能重置到当前裁剪区域对应的自动阈值；
+            // 仅在自动模式下同步更新控件显示值。
+            if (_needsThresholdUpdate)
+            {
+                byte[] cd = cropData;
+                _autoThreshold = await Task.Run(() => ImagePixelator.ComputeAutoThreshold(cd, cropW, cropH));
+                if (!UseManualThreshold)
+                {
+                    _suppressAutoGenerate = true;
+                    ColorMergeThreshold = _autoThreshold;
+                    _suppressAutoGenerate = false;
+                }
+                _needsThresholdUpdate = false;
+            }
+
+            int hs = (int)Math.Round(HorizontalSplits);
+            if (hs < 1) hs = 1;
+            int threshold = UseManualThreshold ? (int)Math.Round(ColorMergeThreshold) : _autoThreshold;
+            if (threshold < 0) threshold = 0;
+            if (threshold > 100) threshold = 100;
+            var mode = _selectedMode?.Value ?? ProcessMode.Realistic;
+
+            var options = new PixelateOptions
+            {
+                HorizontalSplits = hs,
+                ColorMergeThreshold = threshold,
+                Mode = mode,
+                Brand = _selectedBrand?.Value ?? BeadBrand.None,
+                Dither = UseDither
+            };
+
             int ps = Math.Max(1, (int)Math.Ceiling((double)cropW / hs));
             int outW = (cropW + ps - 1) / ps;
             int outH = (cropH + ps - 1) / ps;
@@ -407,6 +439,10 @@ public partial class MainWindowViewModel : ObservableObject
         }
         catch (Exception)
         {
+        }
+        finally
+        {
+            _isGenerating = false;
         }
     }
 
@@ -464,6 +500,8 @@ public partial class MainWindowViewModel : ObservableObject
     {
         try
         {
+            _suppressAutoGenerate = true;
+
             await using var fs = File.OpenRead(path);
 
             // 原图显示位图。
@@ -500,10 +538,12 @@ public partial class MainWindowViewModel : ObservableObject
             CancelCommand.NotifyCanExecuteChanged();
 
             // 加载后立即生成一次，提供即时反馈。
+            _suppressAutoGenerate = false;
             await GenerateAsync();
         }
         catch (Exception)
         {
+            _suppressAutoGenerate = false;
         }
     }
 

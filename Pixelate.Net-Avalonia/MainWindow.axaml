@@ -146,6 +146,10 @@
                                     </ComboBox.ItemTemplate>
                                 </ComboBox>
 
+								<CheckBox Content="颜色抖动"
+                                          IsChecked="{Binding UseDither}"
+                                          Margin="0,0,0,14" />
+
                                 <Grid ColumnDefinitions="Auto,15,*" Margin="0,0,0,14">
                                     <CheckBox Grid.Column="0"
                                               Content="手动调整阈值"
@@ -198,20 +202,12 @@
                                 </ComboBox>
                             </StackPanel>
 
-                            <Grid Grid.Row="1" ColumnDefinitions="*,8,Auto">
-                                <Button Grid.Column="0"
-                                        Content="生成"
-                                        Classes="accent"
-                                        Command="{Binding GenerateCommand}"
-                                        HorizontalAlignment="Stretch"
-                                        HorizontalContentAlignment="Center"
-                                        VerticalContentAlignment="Center"
-                                        Padding="0,16" />
-                                <Button Grid.Column="2"
-                                        Content="编辑像素"
-                                        Command="{Binding EditPixelsCommand}"
-                                        VerticalContentAlignment="Center"
-                                        Padding="14,16">
+                            <Button Grid.Row="1"
+                                    Content="编辑像素"
+                                    Command="{Binding EditPixelsCommand}"
+                                    HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Center"
+                                    Padding="14,16">
 									<Button.Resources>
 										<SolidColorBrush x:Key="ButtonBackground" Color="#4CAF50" />
 										<SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#5DBD5D" />
@@ -220,7 +216,6 @@
 										<SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="White" />
 									</Button.Resources>
 								</Button>
-                            </Grid>
                         </Grid>
                     </Border>
                 </Grid>

@@ -78,7 +78,14 @@ namespace Pixelate.Net
             }
 
             // 分块取色
-            if (options.Mode == ProcessMode.Cartoon)
+            if (options.Dither && palette != null)
+            {
+                if (options.Mode == ProcessMode.Cartoon)
+                    PixelateCartoonDithered(sourceRgba, width, height, ps, outW, outH, palette, assignments, output);
+                else
+                    PixelateRealisticDithered(sourceRgba, width, height, ps, outW, outH, palette, output);
+            }
+            else if (options.Mode == ProcessMode.Cartoon)
                 PixelateCartoon(sourceRgba, width, height, ps, outW, outH, palette, assignments, output);
             else
                 PixelateRealistic(sourceRgba, width, height, ps, outW, outH, palette, output);
@@ -139,6 +146,302 @@ namespace Pixelate.Net
                         dst[di + 2] = avgB;
                     }
                     dst[di + 3] = (byte)(a / count);
+                }
+            }
+        }
+
+        /// <summary>
+        /// 真实模式 + Floyd-Steinberg 抖动：块内平均后，将量化误差扩散到相邻块。
+        /// 仅在有调色板时使用。改善低色数调色板下的渐变表现。
+        /// </summary>
+        private static void PixelateRealisticDithered(
+            ReadOnlySpan<byte> src, int width, int height, int ps, int outW, int outH,
+            byte[] palette, byte[] dst)
+        {
+            // 1. 计算所有块的平均色（浮点，用于误差累积）
+            float[] blockR = new float[outW * outH];
+            float[] blockG = new float[outW * outH];
+            float[] blockB = new float[outW * outH];
+            byte[] blockA = new byte[outW * outH];
+
+            for (int oy = 0; oy < outH; oy++)
+            {
+                int y0 = oy * ps;
+                int y1 = Math.Min(y0 + ps, height);
+                for (int ox = 0; ox < outW; ox++)
+                {
+                    int x0 = ox * ps;
+                    int x1 = Math.Min(x0 + ps, width);
+
+                    long r = 0, g = 0, b = 0, a = 0;
+                    int count = 0;
+                    for (int y = y0; y < y1; y++)
+                    {
+                        int row = y * width * 4;
+                        for (int x = x0; x < x1; x++)
+                        {
+                            int i = row + x * 4;
+                            r += src[i];
+                            g += src[i + 1];
+                            b += src[i + 2];
+                            a += src[i + 3];
+                            count++;
+                        }
+                    }
+
+                    int idx = oy * outW + ox;
+                    blockR[idx] = r / count;
+                    blockG[idx] = g / count;
+                    blockB[idx] = b / count;
+                    blockA[idx] = (byte)(a / count);
+                }
+            }
+
+            // 2. Floyd-Steinberg 误差扩散，从左到右、从上到下遍历
+            for (int oy = 0; oy < outH; oy++)
+            {
+                for (int ox = 0; ox < outW; ox++)
+                {
+                    int idx = oy * outW + ox;
+
+                    // 钳制到 [0, 255]
+                    float r = Math.Clamp(blockR[idx], 0, 255);
+                    float g = Math.Clamp(blockG[idx], 0, 255);
+                    float b = Math.Clamp(blockB[idx], 0, 255);
+
+                    // 找最近调色板色
+                    byte pr = (byte)Math.Round(r);
+                    byte pg = (byte)Math.Round(g);
+                    byte pb = (byte)Math.Round(b);
+                    int best = NearestPaletteIndex(pr, pg, pb, palette);
+
+                    byte palR = palette[best * 3];
+                    byte palG = palette[best * 3 + 1];
+                    byte palB = palette[best * 3 + 2];
+
+                    // 写入输出
+                    int di = idx * 4;
+                    dst[di] = palR;
+                    dst[di + 1] = palG;
+                    dst[di + 2] = palB;
+                    dst[di + 3] = blockA[idx];
+
+                    // 计算量化误差
+                    float errR = r - palR;
+                    float errG = g - palG;
+                    float errB = b - palB;
+
+                    // 扩散到相邻块：右 7/16，左下 3/16，下 5/16，右下 1/16
+                    if (ox + 1 < outW)
+                    {
+                        int ni = idx + 1;
+                        blockR[ni] += errR * 7f / 16f;
+                        blockG[ni] += errG * 7f / 16f;
+                        blockB[ni] += errB * 7f / 16f;
+                    }
+                    if (oy + 1 < outH)
+                    {
+                        if (ox > 0)
+                        {
+                            int ni = idx + outW - 1;
+                            blockR[ni] += errR * 3f / 16f;
+                            blockG[ni] += errG * 3f / 16f;
+                            blockB[ni] += errB * 3f / 16f;
+                        }
+                        {
+                            int ni = idx + outW;
+                            blockR[ni] += errR * 5f / 16f;
+                            blockG[ni] += errG * 5f / 16f;
+                            blockB[ni] += errB * 5f / 16f;
+                        }
+                        if (ox + 1 < outW)
+                        {
+                            int ni = idx + outW + 1;
+                            blockR[ni] += errR * 1f / 16f;
+                            blockG[ni] += errG * 1f / 16f;
+                            blockB[ni] += errB * 1f / 16f;
+                        }
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// 卡通模式 + Floyd-Steinberg 抖动：块内找 top-3 众数调色板色，
+        /// 误差扩散时限定从 top-3 中选最接近调整后均值的色。
+        /// 既保留卡通的锐利边缘特征，又利用误差扩散改善渐变。
+        /// </summary>
+        private static void PixelateCartoonDithered(
+            ReadOnlySpan<byte> src, int width, int height, int ps, int outW, int outH,
+            byte[] palette, int[]? assignments, byte[] dst)
+        {
+            int palCount = palette.Length / 3;
+            int totalBlocks = outW * outH;
+
+            // 品牌色卡模式需构建 bin → 色号查找表
+            int[]? binLookup = null;
+            if (assignments == null)
+            {
+                binLookup = new int[32 * 32 * 32];
+                for (int bin = 0; bin < binLookup.Length; bin++)
+                {
+                    byte r = (byte)(((bin >> 10) & 0x1F) << 3 | 0x04);
+                    byte g = (byte)(((bin >> 5) & 0x1F) << 3 | 0x04);
+                    byte b = (byte)((bin & 0x1F) << 3 | 0x04);
+                    binLookup[bin] = BeadPalettes.NearestIndex(r, g, b, palette);
+                }
+            }
+
+            // 1. 计算块平均色 + 每块 top-3 调色板色号
+            float[] blockR = new float[totalBlocks];
+            float[] blockG = new float[totalBlocks];
+            float[] blockB = new float[totalBlocks];
+            byte[] blockA = new byte[totalBlocks];
+            int[] topColors = new int[totalBlocks * 3];
+
+            int[] blockCounts = new int[palCount];
+
+            for (int oy = 0; oy < outH; oy++)
+            {
+                int y0 = oy * ps;
+                int y1 = Math.Min(y0 + ps, height);
+                for (int ox = 0; ox < outW; ox++)
+                {
+                    int x0 = ox * ps;
+                    int x1 = Math.Min(x0 + ps, width);
+
+                    long r = 0, g = 0, b = 0, a = 0;
+                    int count = 0;
+                    Array.Clear(blockCounts, 0, palCount);
+
+                    for (int y = y0; y < y1; y++)
+                    {
+                        int row = y * width;
+                        for (int x = x0; x < x1; x++)
+                        {
+                            int p = row + x;
+                            int i = p * 4;
+                            r += src[i];
+                            g += src[i + 1];
+                            b += src[i + 2];
+                            a += src[i + 3];
+                            count++;
+
+                            int palIdx = assignments != null
+                                ? assignments[p]
+                                : binLookup![((src[i] >> 3) << 10) | ((src[i + 1] >> 3) << 5) | (src[i + 2] >> 3)];
+                            blockCounts[palIdx]++;
+                        }
+                    }
+
+                    int idx = oy * outW + ox;
+                    blockR[idx] = r / count;
+                    blockG[idx] = g / count;
+                    blockB[idx] = b / count;
+                    blockA[idx] = (byte)(a / count);
+
+                    // 找 top-3 调色板色号
+                    int t0 = 0, t1 = 0, t2 = 0;
+                    int c0 = 0, c1 = 0, c2 = 0;
+                    for (int c = 0; c < palCount; c++)
+                    {
+                        int cnt = blockCounts[c];
+                        if (cnt > c0)
+                        {
+                            c2 = c1; t2 = t1;
+                            c1 = c0; t1 = t0;
+                            c0 = cnt; t0 = c;
+                        }
+                        else if (cnt > c1)
+                        {
+                            c2 = c1; t2 = t1;
+                            c1 = cnt; t1 = c;
+                        }
+                        else if (cnt > c2)
+                        {
+                            c2 = cnt; t2 = c;
+                        }
+                    }
+
+                    topColors[idx * 3] = t0;
+                    topColors[idx * 3 + 1] = t1;
+                    topColors[idx * 3 + 2] = t2;
+                }
+            }
+
+            // 2. Floyd-Steinberg 误差扩散，输出色限定为 top-3 中最接近调整后均值的
+            for (int oy = 0; oy < outH; oy++)
+            {
+                for (int ox = 0; ox < outW; ox++)
+                {
+                    int idx = oy * outW + ox;
+
+                    float r = Math.Clamp(blockR[idx], 0, 255);
+                    float g = Math.Clamp(blockG[idx], 0, 255);
+                    float b = Math.Clamp(blockB[idx], 0, 255);
+
+                    byte pr = (byte)Math.Round(r);
+                    byte pg = (byte)Math.Round(g);
+                    byte pb = (byte)Math.Round(b);
+
+                    // 在 top-3 色号中找最接近调整后均值的
+                    int best = topColors[idx * 3];
+                    double bestDist = double.MaxValue;
+                    for (int t = 0; t < 3; t++)
+                    {
+                        int ci = topColors[idx * 3 + t];
+                        double dr = pr - palette[ci * 3];
+                        double dg = pg - palette[ci * 3 + 1];
+                        double db = pb - palette[ci * 3 + 2];
+                        double d = Wr * dr * dr + Wg * dg * dg + Wb * db * db;
+                        if (d < bestDist) { bestDist = d; best = ci; }
+                    }
+
+                    byte palR = palette[best * 3];
+                    byte palG = palette[best * 3 + 1];
+                    byte palB = palette[best * 3 + 2];
+
+                    int di = idx * 4;
+                    dst[di] = palR;
+                    dst[di + 1] = palG;
+                    dst[di + 2] = palB;
+                    dst[di + 3] = blockA[idx];
+
+                    float errR = r - palR;
+                    float errG = g - palG;
+                    float errB = b - palB;
+
+                    // 扩散到相邻块：右 7/16，左下 3/16，下 5/16，右下 1/16
+                    if (ox + 1 < outW)
+                    {
+                        int ni = idx + 1;
+                        blockR[ni] += errR * 7f / 16f;
+                        blockG[ni] += errG * 7f / 16f;
+                        blockB[ni] += errB * 7f / 16f;
+                    }
+                    if (oy + 1 < outH)
+                    {
+                        if (ox > 0)
+                        {
+                            int ni = idx + outW - 1;
+                            blockR[ni] += errR * 3f / 16f;
+                            blockG[ni] += errG * 3f / 16f;
+                            blockB[ni] += errB * 3f / 16f;
+                        }
+                        {
+                            int ni = idx + outW;
+                            blockR[ni] += errR * 5f / 16f;
+                            blockG[ni] += errG * 5f / 16f;
+                            blockB[ni] += errB * 5f / 16f;
+                        }
+                        if (ox + 1 < outW)
+                        {
+                            int ni = idx + outW + 1;
+                            blockR[ni] += errR * 1f / 16f;
+                            blockG[ni] += errG * 1f / 16f;
+                            blockB[ni] += errB * 1f / 16f;
+                        }
+                    }
                 }
             }
         }
