@@ -4,7 +4,7 @@
         xmlns:controls="using:Pixelate.Net.Avalonia.Controls"
         x:Class="Pixelate.Net.Avalonia.MainWindow"
         x:DataType="vm:MainWindowViewModel"
-        Title="拼豆像素画生成器 v0.6.20"
+        Title="拼豆像素画生成器 v0.6.21"
         Width="1280" Height="960"
         MinWidth="1280" MinHeight="960"
         WindowStartupLocation="CenterScreen"
@@ -17,7 +17,7 @@
     <Grid RowDefinitions="*,Auto" Margin="12">
 
         <!-- 主区域：左 | 右 -->
-        <Grid Grid.Row="0" ColumnDefinitions="420,8,*" Margin="0,0,0,8">
+        <Grid Grid.Row="0" ColumnDefinitions="280,8,*" Margin="0,0,0,8">
 
             <!-- 左列：正常视图 / 像素编辑面板 -->
             <Grid Grid.Column="0">
