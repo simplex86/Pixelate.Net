@@ -36,8 +36,9 @@ namespace Pixelate.Net
         public ProcessMode Mode { get; set; } = ProcessMode.Realistic;
 
         /// <summary>
-        /// 是否启用 Floyd-Steinberg 抖动。仅在 Realistic 模式且有调色板时生效。
-        /// 将量化误差按 7:3:5:1 比例扩散到相邻块，改善渐变表现。
+        /// 是否启用有序抖动（Bayer 4x4 矩阵）。仅有调色板时生效（自由色 + 阈值合并 或 品牌色卡）。
+        /// 按块位置施加阈值偏移后映射到最近调色板色，图案规律、可预测，适合拼豆装配。
+        /// Cartoon 与 Realistic 模式在抖动下统一为"平均色 + 偏移 → 最近调色板色"。
         /// </summary>
         public bool Dither { get; set; } = false;
 

@@ -4,7 +4,7 @@
         xmlns:controls="using:Pixelate.Net.Avalonia.Controls"
         x:Class="Pixelate.Net.Avalonia.MainWindow"
         x:DataType="vm:MainWindowViewModel"
-        Title="拼豆像素画生成器 v0.6.21"
+        Title="拼豆像素画生成器 v0.6.22"
         Width="1280" Height="960"
         MinWidth="1280" MinHeight="960"
         WindowStartupLocation="CenterScreen"
