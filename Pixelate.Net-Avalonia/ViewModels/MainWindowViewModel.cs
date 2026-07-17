@@ -284,7 +284,7 @@ public partial class MainWindowViewModel : ObservableObject
     {
         _selectedMode = Modes[1];
         _selectedDisplayMode = DisplayModes[0];
-        _selectedBrand = Brands[0];
+        _selectedBrand = Brands[1]; // 默认 MARD（291色）
     }
 
     partial void OnPixelatedDataChanged(byte[]? value)
@@ -950,19 +950,24 @@ public partial class MainWindowViewModel : ObservableObject
         }
     }
 
-    /// <summary>渲染像素化结果并弹出系统打印对话框。</summary>
+    /// <summary>渲染像素化结果并启动打印：Windows 弹出系统打印对话框，其他平台用系统 PDF 查看器打开。</summary>
     [RelayCommand(CanExecute = nameof(CanPrint))]
     private async Task PrintAsync()
     {
         if (PixelatedData is null) return;
-        if (!OperatingSystem.IsWindows()) return;
+
+        // 获取主窗口引用，非 Windows 平台用于调用 Launcher 打开 PDF
+        Window? owner = null;
+        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+            owner = desktop.MainWindow;
 
         try
         {
             await PixelPrinter.PrintAsync(
                 PixelatedData, PixelatedWidth, PixelatedHeight,
                 SelectedDisplayMode.Value, ShowCodes, ColorCodeMap,
-                $"pixelated_{PixelatedWidth}x{PixelatedHeight}");
+                $"pixelated_{PixelatedWidth}x{PixelatedHeight}",
+                owner);
         }
         catch (Exception)
         {

@@ -5,17 +5,17 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Threading.Tasks;
+using Avalonia.Controls;
 using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
 using Pixelate.Net.Avalonia.Controls;
 
 namespace Pixelate.Net.Avalonia.Services;
 
 /// <summary>
-/// 调用 Win32 系统打印对话框打印像素化结果。
-/// 仅适用于 Windows 平台（依赖 comdlg32 与 System.Drawing.Printing）。
+/// 打印像素化结果。
+/// Windows 平台调用系统打印对话框（Win32 PrintDlg）；
+/// 其他平台导出 PDF 临时文件并用系统默认查看器打开（由用户在查看器中触发打印）。
 /// </summary>
-[SupportedOSPlatform("windows")]
 public static class PixelPrinter
 {
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
@@ -50,10 +50,30 @@ public static class PixelPrinter
     private static extern IntPtr GlobalFree(IntPtr hMem);
 
     /// <summary>
-    /// 渲染像素化结果并弹出系统打印对话框打印。
-    /// 遵循 ShowCodes 设置决定是否打印颜色编码。
+    /// 渲染像素化结果并启动打印流程。
+    /// Windows 上弹出系统打印对话框；其他平台导出 PDF 临时文件并用系统默认查看器打开。
     /// </summary>
+    /// <param name="owner">主窗口引用，非 Windows 平台用于调用 Launcher；可省略。</param>
     public static async Task PrintAsync(
+        byte[] rgba, int width, int height,
+        DisplayMode mode, bool showCodes,
+        IReadOnlyDictionary<uint, string>? codeMap,
+        string documentName,
+        Window? owner = null)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            await PrintWindowsAsync(rgba, width, height, mode, showCodes, codeMap, documentName);
+        }
+        else
+        {
+            await PrintViaPdfLauncherAsync(rgba, width, height, mode, showCodes, codeMap, documentName, owner);
+        }
+    }
+
+    /// <summary>Windows 平台：渲染为 PNG，通过 Win32 PrintDlg 弹出系统打印对话框打印。</summary>
+    [SupportedOSPlatform("windows")]
+    private static async Task PrintWindowsAsync(
         byte[] rgba, int width, int height,
         DisplayMode mode, bool showCodes,
         IReadOnlyDictionary<uint, string>? codeMap,
@@ -73,6 +93,35 @@ public static class PixelPrinter
         PrintBitmap(bitmap, documentName);
     }
 
+    /// <summary>非 Windows 平台：导出 PDF 临时文件并用系统默认查看器打开，由用户在查看器中触发打印。</summary>
+    private static async Task PrintViaPdfLauncherAsync(
+        byte[] rgba, int width, int height,
+        DisplayMode mode, bool showCodes,
+        IReadOnlyDictionary<uint, string>? codeMap,
+        string documentName,
+        Window? owner)
+    {
+        // 生成唯一临时文件路径
+        string tempPath = Path.Combine(Path.GetTempPath(), $"{documentName}_{Guid.NewGuid():N}.pdf");
+        try
+        {
+            await PixelExporter.ExportAsync(
+                rgba, width, height, mode, showCodes, codeMap, tempPath, "PDF");
+
+            if (owner is null)
+                return;
+
+            var storageFile = await owner.StorageProvider.TryGetFileFromPathAsync(new Uri(tempPath));
+            if (storageFile is not null)
+                await owner.Launcher.LaunchFileAsync(storageFile);
+        }
+        catch
+        {
+            // 临时文件由系统清理策略处理，不在此删除以避免占用
+        }
+    }
+
+    [SupportedOSPlatform("windows")]
     private static void PrintBitmap(Bitmap bitmap, string documentName)
     {
         var settings = new PrinterSettings();
