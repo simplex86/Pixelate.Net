@@ -42,15 +42,15 @@ public static class PixelExporter
         }
     }
 
-    private static async Task ExportImageAsync(
+    /// <summary>渲染像素化结果到 ImageSharp 图像（白色背景，包含颜色编码）。</summary>
+    public static Image<Rgb24> RenderImage(
         byte[] rgba, int width, int height,
         DisplayMode mode, bool showCodes,
-        IReadOnlyDictionary<uint, string>? codeMap,
-        string path, bool isJpg)
+        IReadOnlyDictionary<uint, string>? codeMap)
     {
         int imgW = width * PixelSize;
         int imgH = height * PixelSize;
-        using var image = new Image<Rgb24>(imgW, imgH, Color.White);
+        var image = new Image<Rgb24>(imgW, imgH, Color.White);
 
         var font = SystemFonts.CreateFont("Arial", (int)(PixelSize / 2.5), FontStyle.Regular);
 
@@ -106,6 +106,17 @@ public static class PixelExporter
                 }
             }
         });
+
+        return image;
+    }
+
+    private static async Task ExportImageAsync(
+        byte[] rgba, int width, int height,
+        DisplayMode mode, bool showCodes,
+        IReadOnlyDictionary<uint, string>? codeMap,
+        string path, bool isJpg)
+    {
+        using var image = RenderImage(rgba, width, height, mode, showCodes, codeMap);
 
         await using var fs = File.Create(path);
         if (isJpg)

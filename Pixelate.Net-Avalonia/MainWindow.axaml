@@ -444,27 +444,41 @@
                               IsChecked="{Binding ShowCodes}"
                               IsEnabled="{Binding CanShowCodes}"
                               VerticalAlignment="Center" />
-                    <Button Grid.Column="2"
-                            Content="导出"
-                            IsEnabled="{Binding CanExport}"
-                            Padding="20,6"
-                            VerticalAlignment="Center">
-                        <Button.Flyout>
-                            <MenuFlyout>
-                                <MenuItem Header="PNG" Command="{Binding ExportCommand}" CommandParameter="PNG" />
-                                <MenuItem Header="JPG" Command="{Binding ExportCommand}" CommandParameter="JPG" />
-                                <MenuItem Header="SVG" Command="{Binding ExportCommand}" CommandParameter="SVG" />
-                                <MenuItem Header="PDF" Command="{Binding ExportCommand}" CommandParameter="PDF" />
-                            </MenuFlyout>
-                        </Button.Flyout>
-                        <Button.Resources>
-                            <SolidColorBrush x:Key="ButtonBackground" Color="#FFA500" />
-                            <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#FFB733" />
-                            <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#CC8400" />
-                            <SolidColorBrush x:Key="ButtonForeground" Color="White" />
-                            <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="White" />
-                        </Button.Resources>
-                    </Button>
+                    <StackPanel Grid.Column="2"
+                                Orientation="Horizontal"
+                                Spacing="8"
+                                VerticalAlignment="Center">
+                        <Button Content="导出"
+                                IsEnabled="{Binding CanExport}"
+                                Padding="20,6">
+                            <Button.Flyout>
+                                <MenuFlyout>
+                                    <MenuItem Header="PNG" Command="{Binding ExportCommand}" CommandParameter="PNG" />
+                                    <MenuItem Header="JPG" Command="{Binding ExportCommand}" CommandParameter="JPG" />
+                                    <MenuItem Header="SVG" Command="{Binding ExportCommand}" CommandParameter="SVG" />
+                                    <MenuItem Header="PDF" Command="{Binding ExportCommand}" CommandParameter="PDF" />
+                                </MenuFlyout>
+                            </Button.Flyout>
+                            <Button.Resources>
+                                <SolidColorBrush x:Key="ButtonBackground" Color="#FFA500" />
+                                <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#FFB733" />
+                                <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#CC8400" />
+                                <SolidColorBrush x:Key="ButtonForeground" Color="White" />
+                                <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="White" />
+                            </Button.Resources>
+                        </Button>
+                        <Button Content="打印"
+                                Command="{Binding PrintCommand}"
+                                Padding="20,6">
+                            <Button.Resources>
+                                <SolidColorBrush x:Key="ButtonBackground" Color="#2196F3" />
+                                <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#42A5F5" />
+                                <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#1976D2" />
+                                <SolidColorBrush x:Key="ButtonForeground" Color="White" />
+                                <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="White" />
+                            </Button.Resources>
+                        </Button>
+                    </StackPanel>
                 </Grid>
             </Grid>
         </Grid>

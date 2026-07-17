@@ -103,7 +103,9 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanEditPixels))]
     [NotifyPropertyChangedFor(nameof(CanExport))]
+    [NotifyPropertyChangedFor(nameof(CanPrint))]
     [NotifyCanExecuteChangedFor(nameof(ExportCommand))]
+    [NotifyCanExecuteChangedFor(nameof(PrintCommand))]
     private byte[]? _pixelatedData;
     [ObservableProperty] private int _pixelatedWidth;
     [ObservableProperty] private int _pixelatedHeight;
@@ -113,12 +115,14 @@ public partial class MainWindowViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanExport))]
+    [NotifyPropertyChangedFor(nameof(CanPrint))]
     [NotifyPropertyChangedFor(nameof(IsPixelInteractive))]
     [NotifyPropertyChangedFor(nameof(IsNormalView))]
     [NotifyPropertyChangedFor(nameof(CanEditPixels))]
     [NotifyPropertyChangedFor(nameof(CanDeletePixels))]
     [NotifyCanExecuteChangedFor(nameof(DeletePixelsCommand))]
     [NotifyCanExecuteChangedFor(nameof(ExportCommand))]
+    [NotifyCanExecuteChangedFor(nameof(PrintCommand))]
     private bool _isPixelEditing;
     [ObservableProperty] private IReadOnlyList<PaletteColorItem> _editColors = Array.Empty<PaletteColorItem>();
     [ObservableProperty] private PaletteColorItem? _selectedEditColor;
@@ -128,6 +132,7 @@ public partial class MainWindowViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanExport))]
+    [NotifyPropertyChangedFor(nameof(CanPrint))]
     [NotifyPropertyChangedFor(nameof(IsPixelInteractive))]
     [NotifyPropertyChangedFor(nameof(IsNormalView))]
     [NotifyPropertyChangedFor(nameof(CanEditPixels))]
@@ -136,6 +141,7 @@ public partial class MainWindowViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(DeleteColorCommand))]
     [NotifyCanExecuteChangedFor(nameof(EditPixelsCommand))]
     [NotifyCanExecuteChangedFor(nameof(ExportCommand))]
+    [NotifyCanExecuteChangedFor(nameof(PrintCommand))]
     private bool _isPixelDeleting;
     [ObservableProperty] private IReadOnlyList<DeleteColorItem> _deleteColors = Array.Empty<DeleteColorItem>();
     [ObservableProperty]
@@ -150,7 +156,9 @@ public partial class MainWindowViewModel : ObservableObject
     /// <summary>是否处于编辑选择框模式。</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanExport))]
+    [NotifyPropertyChangedFor(nameof(CanPrint))]
     [NotifyCanExecuteChangedFor(nameof(ExportCommand))]
+    [NotifyCanExecuteChangedFor(nameof(PrintCommand))]
     private bool _isEditing;
 
     private DisplayModeOption _selectedDisplayMode;
@@ -244,6 +252,9 @@ public partial class MainWindowViewModel : ObservableObject
     /// <summary>是否可导出：需已有像素化结果且未处于编辑/删除模式。</summary>
     public bool CanExport => PixelatedData is not null && !IsEditing && !IsPixelEditing && !IsPixelDeleting;
 
+    /// <summary>是否可打印：与导出条件一致。</summary>
+    public bool CanPrint => CanExport;
+
     // 已加载的源像素数据，供反复生成使用。
     private byte[]? _sourceRgba;
     private int _sourceWidth;
@@ -281,6 +292,7 @@ public partial class MainWindowViewModel : ObservableObject
         EditPixelsCommand.NotifyCanExecuteChanged();
         DeletePixelsCommand.NotifyCanExecuteChanged();
         ExportCommand.NotifyCanExecuteChanged();
+        PrintCommand.NotifyCanExecuteChanged();
     }
 
     partial void OnUseDitherChanged(bool value) => _ = AutoGenerateAsync();
@@ -932,6 +944,25 @@ public partial class MainWindowViewModel : ObservableObject
                 PixelatedData, PixelatedWidth, PixelatedHeight,
                 SelectedDisplayMode.Value, ShowCodes, ColorCodeMap,
                 path, format);
+        }
+        catch (Exception)
+        {
+        }
+    }
+
+    /// <summary>渲染像素化结果并弹出系统打印对话框。</summary>
+    [RelayCommand(CanExecute = nameof(CanPrint))]
+    private async Task PrintAsync()
+    {
+        if (PixelatedData is null) return;
+        if (!OperatingSystem.IsWindows()) return;
+
+        try
+        {
+            await PixelPrinter.PrintAsync(
+                PixelatedData, PixelatedWidth, PixelatedHeight,
+                SelectedDisplayMode.Value, ShowCodes, ColorCodeMap,
+                $"pixelated_{PixelatedWidth}x{PixelatedHeight}");
         }
         catch (Exception)
         {
