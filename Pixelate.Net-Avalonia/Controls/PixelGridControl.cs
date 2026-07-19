@@ -76,8 +76,9 @@ public class PixelGridControl : Control
     private readonly Dictionary<uint, IBrush> _brushCache = new();
     private static readonly IBrush GridBrush = new SolidColorBrush(0x88888888);
     private static readonly IPen GridPen = new Pen(GridBrush, 1);
-    // 被删除像素（alpha=0）的显示颜色
-    private static readonly IBrush DeletedBrush = new SolidColorBrush(0xFFFFFFFF);
+    // 被删除像素（alpha=0）的棋盘格颜色：白 + 浅灰，组成 2x2 棋盘表示透明
+    private static readonly IBrush CheckerLightBrush = new SolidColorBrush(0xFFFFFFFF);
+    private static readonly IBrush CheckerDarkBrush = new SolidColorBrush(0xFFCCCCCC);
 
     public byte[]? PixelData
     {
@@ -158,15 +159,22 @@ public class PixelGridControl : Control
         {
             if (DisplayMode == DisplayMode.Square)
             {
-                // 绘制色块
+                // 绘制色块（被删除像素统一渲染为 2x2 棋盘格，不受显示模式影响）
                 for (int y = 0; y < GridHeight; y++)
                 {
                     for (int x = 0; x < GridWidth; x++)
                     {
                         int i = (y * GridWidth + x) * 4;
-                        var brush = data[i + 3] == 0 ? DeletedBrush : GetBrush(data[i], data[i + 1], data[i + 2], data[i + 3]);
                         var rect = new Rect(x * cw, y * ch, cw, ch);
-                        context.DrawRectangle(brush, null, rect);
+                        if (data[i + 3] == 0)
+                        {
+                            DrawCheckerboard(context, rect);
+                        }
+                        else
+                        {
+                            var brush = GetBrush(data[i], data[i + 1], data[i + 2], data[i + 3]);
+                            context.DrawRectangle(brush, null, rect);
+                        }
                     }
                 }
 
@@ -189,9 +197,17 @@ public class PixelGridControl : Control
                     for (int x = 0; x < GridWidth; x++)
                     {
                         int i = (y * GridWidth + x) * 4;
-                        var brush = data[i + 3] == 0 ? DeletedBrush : GetBrush(data[i], data[i + 1], data[i + 2], data[i + 3]);
                         var rect = new Rect(x * cw, y * ch, cw, ch);
-                        context.DrawEllipse(brush, null, rect);
+                        if (data[i + 3] == 0)
+                        {
+                            // 被删除像素不受显示模式影响，永远渲染为棋盘格方格
+                            DrawCheckerboard(context, rect);
+                        }
+                        else
+                        {
+                            var brush = GetBrush(data[i], data[i + 1], data[i + 2], data[i + 3]);
+                            context.DrawEllipse(brush, null, rect);
+                        }
                     }
                 }
             }
@@ -204,11 +220,16 @@ public class PixelGridControl : Control
                     for (int x = 0; x < GridWidth; x++)
                     {
                         int i = (y * GridWidth + x) * 4;
-                        // 被删除的像素不绘制空环
-                        if (data[i + 3] == 0) continue;
+                        var rect = new Rect(x * cw, y * ch, cw, ch);
+                        if (data[i + 3] == 0)
+                        {
+                            // 被删除像素不受显示模式影响，永远渲染为棋盘格方格
+                            DrawCheckerboard(context, rect);
+                            continue;
+                        }
                         var brush = GetBrush(data[i], data[i + 1], data[i + 2], data[i + 3]);
-                        var rect = new Rect(x * cw + inset, y * ch + inset, cw - strokeWidth, ch - strokeWidth);
-                        context.DrawEllipse(null, new Pen(brush, strokeWidth), rect);
+                        context.DrawEllipse(null, new Pen(brush, strokeWidth),
+                            new Rect(rect.X + inset, rect.Y + inset, cw - strokeWidth, ch - strokeWidth));
                     }
                 }
             }
@@ -319,5 +340,21 @@ public class PixelGridControl : Control
             _brushCache[key] = brush;
         }
         return brush;
+    }
+
+    /// <summary>
+    /// 在指定矩形内绘制 2x2 灰白相间的棋盘格，用于表示被删除（透明）的像素。
+    /// 左上、右下为白色；右上、左下为浅灰。
+    /// </summary>
+    private static void DrawCheckerboard(DrawingContext context, Rect rect)
+    {
+        double halfW = rect.Width / 2;
+        double halfH = rect.Height / 2;
+        double x0 = rect.X, y0 = rect.Y;
+        double x1 = x0 + halfW, y1 = y0 + halfH;
+        context.DrawRectangle(CheckerLightBrush, null, new Rect(x0, y0, halfW, halfH));
+        context.DrawRectangle(CheckerDarkBrush, null, new Rect(x1, y0, halfW, halfH));
+        context.DrawRectangle(CheckerDarkBrush, null, new Rect(x0, y1, halfW, halfH));
+        context.DrawRectangle(CheckerLightBrush, null, new Rect(x1, y1, halfW, halfH));
     }
 }

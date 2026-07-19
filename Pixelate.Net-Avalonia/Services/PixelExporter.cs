@@ -23,34 +23,43 @@ public static class PixelExporter
         byte[] rgba, int width, int height,
         DisplayMode mode, bool showCodes,
         IReadOnlyDictionary<uint, string>? codeMap,
-        string path, string format)
+        string path, string format,
+        bool transparentBackground = true)
     {
         switch (format.ToUpperInvariant())
         {
             case "PNG":
-                await ExportImageAsync(rgba, width, height, mode, showCodes, codeMap, path, isJpg: false);
+                await ExportImageAsync(rgba, width, height, mode, showCodes, codeMap, path, isJpg: false, transparentBackground);
                 break;
             case "JPG":
-                await ExportImageAsync(rgba, width, height, mode, showCodes, codeMap, path, isJpg: true);
+                // JPG 不支持 alpha 通道，被删除像素以白色呈现
+                await ExportImageAsync(rgba, width, height, mode, showCodes, codeMap, path, isJpg: true, transparentBackground: false);
                 break;
             case "SVG":
-                ExportSvg(rgba, width, height, mode, showCodes, codeMap, path);
+                ExportSvg(rgba, width, height, mode, showCodes, codeMap, path, transparentBackground);
                 break;
             case "PDF":
-                ExportPdf(rgba, width, height, mode, showCodes, codeMap, path);
+                ExportPdf(rgba, width, height, mode, showCodes, codeMap, path, transparentBackground);
                 break;
         }
     }
 
-    /// <summary>渲染像素化结果到 ImageSharp 图像（白色背景，包含颜色编码）。</summary>
-    public static Image<Rgb24> RenderImage(
+    /// <summary>
+    /// 渲染像素化结果到 ImageSharp 图像。
+    /// transparentBackground=true 时使用 Rgba32 透明背景（被删除像素保持透明）；
+    /// transparentBackground=false 时使用 Rgb24 白色背景（被删除像素呈现白色）。
+    /// </summary>
+    public static Image RenderImage(
         byte[] rgba, int width, int height,
         DisplayMode mode, bool showCodes,
-        IReadOnlyDictionary<uint, string>? codeMap)
+        IReadOnlyDictionary<uint, string>? codeMap,
+        bool transparentBackground)
     {
         int imgW = width * PixelSize;
         int imgH = height * PixelSize;
-        var image = new Image<Rgb24>(imgW, imgH, Color.White);
+        Image image = transparentBackground
+            ? new Image<Rgba32>(imgW, imgH, Color.Transparent)
+            : new Image<Rgb24>(imgW, imgH, Color.White);
 
         var font = SystemFonts.CreateFont("Arial", (int)(PixelSize / 2.5), FontStyle.Regular);
 
@@ -114,9 +123,9 @@ public static class PixelExporter
         byte[] rgba, int width, int height,
         DisplayMode mode, bool showCodes,
         IReadOnlyDictionary<uint, string>? codeMap,
-        string path, bool isJpg)
+        string path, bool isJpg, bool transparentBackground)
     {
-        using var image = RenderImage(rgba, width, height, mode, showCodes, codeMap);
+        using var image = RenderImage(rgba, width, height, mode, showCodes, codeMap, transparentBackground);
 
         await using var fs = File.Create(path);
         if (isJpg)
@@ -129,13 +138,17 @@ public static class PixelExporter
         byte[] rgba, int width, int height,
         DisplayMode mode, bool showCodes,
         IReadOnlyDictionary<uint, string>? codeMap,
-        string path)
+        string path, bool transparentBackground)
     {
         int imgW = width * PixelSize;
         int imgH = height * PixelSize;
         var sb = new StringBuilder();
         sb.Append($"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{imgW}\" height=\"{imgH}\">");
-        sb.Append($"<rect width=\"{imgW}\" height=\"{imgH}\" fill=\"white\"/>");
+        if (!transparentBackground)
+        {
+            // 非透明背景：绘制白色底，被删除像素呈现白色
+            sb.Append($"<rect width=\"{imgW}\" height=\"{imgH}\" fill=\"white\"/>");
+        }
 
         double half = PixelSize / 2.0;
         double sw = Math.Max(1, PixelSize / 6.0);
@@ -196,7 +209,7 @@ public static class PixelExporter
         byte[] rgba, int width, int height,
         DisplayMode mode, bool showCodes,
         IReadOnlyDictionary<uint, string>? codeMap,
-        string path)
+        string path, bool transparentBackground)
     {
         var doc = new PdfDocument();
         var page = doc.AddPage();
@@ -204,7 +217,11 @@ public static class PixelExporter
         page.Height = new XUnit(height * PixelSize);
         var gfx = XGraphics.FromPdfPage(page);
 
-        gfx.DrawRectangle(XBrushes.White, 0, 0, width * PixelSize, height * PixelSize);
+        if (!transparentBackground)
+        {
+            // 非透明背景：绘制白色底，被删除像素呈现白色
+            gfx.DrawRectangle(XBrushes.White, 0, 0, width * PixelSize, height * PixelSize);
+        }
 
         double half = PixelSize / 2.0;
         double sw = Math.Max(1, PixelSize / 6.0);

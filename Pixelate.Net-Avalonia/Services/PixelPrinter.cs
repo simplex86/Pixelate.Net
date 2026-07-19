@@ -80,9 +80,10 @@ public static class PixelPrinter
         string documentName)
     {
         // 在后台线程渲染 PNG 字节，避免阻塞 UI
+        // 打印时使用白底渲染，被删除（透明）像素打印成白色
         byte[] pngBytes = await Task.Run(() =>
         {
-            using var image = PixelExporter.RenderImage(rgba, width, height, mode, showCodes, codeMap);
+            using var image = PixelExporter.RenderImage(rgba, width, height, mode, showCodes, codeMap, transparentBackground: false);
             using var ms = new MemoryStream();
             image.SaveAsPng(ms);
             return ms.ToArray();
@@ -105,8 +106,10 @@ public static class PixelPrinter
         string tempPath = Path.Combine(Path.GetTempPath(), $"{documentName}_{Guid.NewGuid():N}.pdf");
         try
         {
+            // 打印时使用白底渲染，被删除（透明）像素打印成白色
             await PixelExporter.ExportAsync(
-                rgba, width, height, mode, showCodes, codeMap, tempPath, "PDF");
+                rgba, width, height, mode, showCodes, codeMap, tempPath, "PDF",
+                transparentBackground: false);
 
             if (owner is null)
                 return;
