@@ -497,8 +497,17 @@
                     <TextBlock Text="{Binding BeadCount}" VerticalAlignment="Center" />
                     <Button Content="详情"
                             Command="{Binding ShowDetailsCommand}"
+                            IsVisible="{Binding HasPixelatedData}"
                             Padding="10,2"
-                            FontSize="11" />
+                            FontSize="11">
+                        <Button.Resources>
+                            <SolidColorBrush x:Key="ButtonBackground" Color="#FFA500" />
+                            <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#FFB733" />
+                            <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#CC8400" />
+                            <SolidColorBrush x:Key="ButtonForeground" Color="White" />
+                            <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="White" />
+                        </Button.Resources>
+                    </Button>
                 </StackPanel>
             </StackPanel>
         </Border>

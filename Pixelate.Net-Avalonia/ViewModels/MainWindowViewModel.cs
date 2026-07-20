@@ -105,6 +105,7 @@ public partial class MainWindowViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(CanEditPixels))]
     [NotifyPropertyChangedFor(nameof(CanExport))]
     [NotifyPropertyChangedFor(nameof(CanPrint))]
+    [NotifyPropertyChangedFor(nameof(HasPixelatedData))]
     [NotifyCanExecuteChangedFor(nameof(ExportCommand))]
     [NotifyCanExecuteChangedFor(nameof(PrintCommand))]
     [NotifyCanExecuteChangedFor(nameof(ShowDetailsCommand))]
@@ -264,6 +265,9 @@ public partial class MainWindowViewModel : ObservableObject
     /// <summary>是否可查看拼豆统计详情：需已有像素化结果且未处于编辑/删除模式。</summary>
     public bool CanShowDetails => PixelatedData is not null && !IsEditing && !IsPixelEditing && !IsPixelDeleting;
 
+    /// <summary>是否已有像素化结果（用于控制"详情"按钮的可见性）。</summary>
+    public bool HasPixelatedData => PixelatedData is not null;
+
     // 已加载的源像素数据，供反复生成使用。
     private byte[]? _sourceRgba;
     private int _sourceWidth;
@@ -303,6 +307,7 @@ public partial class MainWindowViewModel : ObservableObject
         ExportCommand.NotifyCanExecuteChanged();
         PrintCommand.NotifyCanExecuteChanged();
         ShowDetailsCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(HasPixelatedData));
     }
 
     partial void OnUseDitherChanged(bool value) => _ = AutoGenerateAsync();
@@ -1101,7 +1106,8 @@ public partial class MainWindowViewModel : ObservableObject
         {
             Content = listPanel,
             VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Margin = new Thickness(0, 0, 0, 8)
         };
 
         var dialog = new Window();
@@ -1110,26 +1116,52 @@ public partial class MainWindowViewModel : ObservableObject
         {
             Content = "关闭",
             Padding = new Thickness(24, 6),
-            HorizontalAlignment = HorizontalAlignment.Center,
-            Margin = new Thickness(0, 16, 0, 0)
+            HorizontalAlignment = HorizontalAlignment.Center
         };
         closeBtn.Click += (_, _) => dialog.Close();
 
-        var mainPanel = new StackPanel
+        // 主布局：顶部统计(自动) + 中间滚动列表(占满剩余) + 底部关闭按钮(自动)
+        var mainGrid = new Grid
         {
+            RowDefinitions = new RowDefinitions("Auto,*,Auto"),
             Margin = new Thickness(20)
         };
-        mainPanel.Children.Add(header);
-        mainPanel.Children.Add(scrollViewer);
-        mainPanel.Children.Add(closeBtn);
+        Grid.SetRow(header, 0);
+        Grid.SetRow(scrollViewer, 1);
+        Grid.SetRow(closeBtn, 2);
+        mainGrid.Children.Add(header);
+        mainGrid.Children.Add(scrollViewer);
+        mainGrid.Children.Add(closeBtn);
 
         dialog.Title = "拼豆统计详情";
         dialog.Width = 360;
         dialog.Height = 520;
         dialog.CanResize = false;
         dialog.WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        dialog.Content = mainPanel;
+        dialog.Content = mainGrid;
+
+        // 隐藏标题栏的最小化和最大化按钮（仅保留关闭按钮）。Windows 平台用 P/Invoke 修改 WS。
+        dialog.Opened += (_, _) =>
+        {
+            if (!OperatingSystem.IsWindows()) return;
+            var handle = dialog.TryGetPlatformHandle();
+            if (handle is null) return;
+            int style = GetWindowLong(handle.Handle, GWL_STYLE);
+            style &= ~WS_MINIMIZEBOX;
+            style &= ~WS_MAXIMIZEBOX;
+            SetWindowLong(handle.Handle, GWL_STYLE, style);
+        };
 
         return dialog;
     }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern int GetWindowLong(IntPtr hwnd, int index);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern int SetWindowLong(IntPtr hwnd, int index, int value);
+
+    private const int GWL_STYLE = -16;
+    private const int WS_MINIMIZEBOX = 0x00020000;
+    private const int WS_MAXIMIZEBOX = 0x00010000;
 }
