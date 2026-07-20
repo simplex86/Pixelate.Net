@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
@@ -106,6 +107,7 @@ public partial class MainWindowViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(CanPrint))]
     [NotifyCanExecuteChangedFor(nameof(ExportCommand))]
     [NotifyCanExecuteChangedFor(nameof(PrintCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ShowDetailsCommand))]
     private byte[]? _pixelatedData;
     [ObservableProperty] private int _pixelatedWidth;
     [ObservableProperty] private int _pixelatedHeight;
@@ -123,10 +125,11 @@ public partial class MainWindowViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(DeletePixelsCommand))]
     [NotifyCanExecuteChangedFor(nameof(ExportCommand))]
     [NotifyCanExecuteChangedFor(nameof(PrintCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ShowDetailsCommand))]
     private bool _isPixelEditing;
     [ObservableProperty] private IReadOnlyList<PaletteColorItem> _editColors = Array.Empty<PaletteColorItem>();
     [ObservableProperty] private PaletteColorItem? _selectedEditColor;
-    [ObservableProperty] private bool _showCodes;
+    [ObservableProperty] private bool _showCodes = true;
     [ObservableProperty] private bool _isEyedropping;
     [ObservableProperty] private IReadOnlyDictionary<uint, string>? _colorCodeMap;
 
@@ -142,6 +145,7 @@ public partial class MainWindowViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(EditPixelsCommand))]
     [NotifyCanExecuteChangedFor(nameof(ExportCommand))]
     [NotifyCanExecuteChangedFor(nameof(PrintCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ShowDetailsCommand))]
     private bool _isPixelDeleting;
     [ObservableProperty] private IReadOnlyList<DeleteColorItem> _deleteColors = Array.Empty<DeleteColorItem>();
     [ObservableProperty]
@@ -157,8 +161,10 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanExport))]
     [NotifyPropertyChangedFor(nameof(CanPrint))]
+    [NotifyPropertyChangedFor(nameof(CanShowCodes))]
     [NotifyCanExecuteChangedFor(nameof(ExportCommand))]
     [NotifyCanExecuteChangedFor(nameof(PrintCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ShowDetailsCommand))]
     private bool _isEditing;
 
     private DisplayModeOption _selectedDisplayMode;
@@ -246,14 +252,17 @@ public partial class MainWindowViewModel : ObservableObject
     /// <summary>是否可撤销：处于编辑或删除模式且 undo 栈非空。</summary>
     public bool CanUndo => (IsPixelEditing || IsPixelDeleting) && _undoStack.Count > 0;
 
-    /// <summary>是否可显示颜色编码：需选中了品牌色卡。</summary>
-    public bool CanShowCodes => _selectedBrand?.Value != BeadBrand.None;
+    /// <summary>是否可显示颜色编码：需选中了品牌色卡，且未处于原图编辑状态。</summary>
+    public bool CanShowCodes => _selectedBrand?.Value != BeadBrand.None && !IsEditing;
 
     /// <summary>是否可导出：需已有像素化结果且未处于编辑/删除模式。</summary>
     public bool CanExport => PixelatedData is not null && !IsEditing && !IsPixelEditing && !IsPixelDeleting;
 
     /// <summary>是否可打印：与导出条件一致。</summary>
     public bool CanPrint => CanExport;
+
+    /// <summary>是否可查看拼豆统计详情：需已有像素化结果且未处于编辑/删除模式。</summary>
+    public bool CanShowDetails => PixelatedData is not null && !IsEditing && !IsPixelEditing && !IsPixelDeleting;
 
     // 已加载的源像素数据，供反复生成使用。
     private byte[]? _sourceRgba;
@@ -293,6 +302,7 @@ public partial class MainWindowViewModel : ObservableObject
         DeletePixelsCommand.NotifyCanExecuteChanged();
         ExportCommand.NotifyCanExecuteChanged();
         PrintCommand.NotifyCanExecuteChanged();
+        ShowDetailsCommand.NotifyCanExecuteChanged();
     }
 
     partial void OnUseDitherChanged(bool value) => _ = AutoGenerateAsync();
@@ -972,5 +982,154 @@ public partial class MainWindowViewModel : ObservableObject
         catch (Exception)
         {
         }
+    }
+
+    /// <summary>弹出拼豆统计详情对话框：第一行显示总数和颜色数，下方为按数量降序排列的颜色列表。</summary>
+    [RelayCommand(CanExecute = nameof(CanShowDetails))]
+    private async Task ShowDetailsAsync()
+    {
+        if (PixelatedData is null) return;
+
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime desktop)
+            return;
+        var owner = desktop.MainWindow;
+        if (owner is null) return;
+
+        // 计算颜色统计：跳过已删除（透明）像素。
+        var brand = _selectedBrand?.Value ?? BeadBrand.None;
+        var palette = BeadPalettes.Get(brand);
+        var paletteMap = new Dictionary<uint, BeadColor>(palette.Count);
+        foreach (var c in palette)
+            paletteMap[((uint)c.R << 16) | ((uint)c.G << 8) | c.B] = c;
+
+        var counts = new Dictionary<uint, int>();
+        var data = PixelatedData;
+        int total = PixelatedWidth * PixelatedHeight;
+        int totalCount = 0;
+        for (int i = 0; i < total; i++)
+        {
+            int idx = i * 4;
+            if (data[idx + 3] == 0) continue;
+            totalCount++;
+            uint key = ((uint)data[idx] << 16) | ((uint)data[idx + 1] << 8) | data[idx + 2];
+            counts[key] = counts.TryGetValue(key, out var c) ? c + 1 : 1;
+        }
+
+        // 构建颜色列表（按数量降序），未在色卡中的颜色以 RGB 文本展示。
+        var items = new List<(BeadColor color, int count)>(counts.Count);
+        foreach (var (key, count) in counts)
+        {
+            if (paletteMap.TryGetValue(key, out var bc))
+            {
+                items.Add((bc, count));
+            }
+            else
+            {
+                byte r = (byte)(key >> 16);
+                byte g = (byte)(key >> 8);
+                byte b = (byte)key;
+                items.Add((new BeadColor("RGB", $"RGB({r},{g},{b})", r, g, b), count));
+            }
+        }
+        items.Sort((a, b) => b.count.CompareTo(a.count));
+
+        var dialog = BuildDetailsDialog(totalCount, items.Count, items);
+        await dialog.ShowDialog(owner);
+    }
+
+    /// <summary>构建拼豆统计详情对话框窗口。</summary>
+    private static Window BuildDetailsDialog(int totalCount, int colorCount, List<(BeadColor color, int count)> items)
+    {
+        // 顶部统计信息
+        var header = new TextBlock
+        {
+            Text = $"拼豆总数: {totalCount}    使用颜色: {colorCount}",
+            FontSize = 14,
+            FontWeight = FontWeight.SemiBold,
+            Margin = new Thickness(0, 0, 0, 12)
+        };
+
+        // 颜色列表
+        var listPanel = new StackPanel { Spacing = 2 };
+        foreach (var (color, count) in items)
+        {
+            var row = new Grid
+            {
+                ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"),
+                Margin = new Thickness(0, 2)
+            };
+
+            var colorBlock = new Border
+            {
+                Width = 18,
+                Height = 18,
+                Background = new SolidColorBrush(global::Avalonia.Media.Color.FromRgb(color.R, color.G, color.B)),
+                BorderBrush = new SolidColorBrush(global::Avalonia.Media.Color.FromRgb(0xC0, 0xC0, 0xC0)),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(2),
+                Margin = new Thickness(0, 0, 8, 0),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            Grid.SetColumn(colorBlock, 0);
+
+            var nameText = new TextBlock
+            {
+                Text = color.Code == color.Name ? color.Code : $"{color.Code} {color.Name}",
+                FontSize = 12,
+                VerticalAlignment = VerticalAlignment.Center,
+                TextTrimming = TextTrimming.CharacterEllipsis
+            };
+            Grid.SetColumn(nameText, 1);
+
+            var countText = new TextBlock
+            {
+                Text = count.ToString(),
+                FontSize = 12,
+                VerticalAlignment = VerticalAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                Margin = new Thickness(12, 0, 0, 0)
+            };
+            Grid.SetColumn(countText, 2);
+
+            row.Children.Add(colorBlock);
+            row.Children.Add(nameText);
+            row.Children.Add(countText);
+            listPanel.Children.Add(row);
+        }
+
+        var scrollViewer = new ScrollViewer
+        {
+            Content = listPanel,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
+        };
+
+        var dialog = new Window();
+
+        var closeBtn = new Button
+        {
+            Content = "关闭",
+            Padding = new Thickness(24, 6),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Margin = new Thickness(0, 16, 0, 0)
+        };
+        closeBtn.Click += (_, _) => dialog.Close();
+
+        var mainPanel = new StackPanel
+        {
+            Margin = new Thickness(20)
+        };
+        mainPanel.Children.Add(header);
+        mainPanel.Children.Add(scrollViewer);
+        mainPanel.Children.Add(closeBtn);
+
+        dialog.Title = "拼豆统计详情";
+        dialog.Width = 360;
+        dialog.Height = 520;
+        dialog.CanResize = false;
+        dialog.WindowStartupLocation = WindowStartupLocation.CenterOwner;
+        dialog.Content = mainPanel;
+
+        return dialog;
     }
 }

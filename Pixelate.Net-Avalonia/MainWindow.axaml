@@ -4,7 +4,7 @@
         xmlns:controls="using:Pixelate.Net.Avalonia.Controls"
         x:Class="Pixelate.Net.Avalonia.MainWindow"
         x:DataType="vm:MainWindowViewModel"
-        Title="拼豆像素画生成器 v0.7.28"
+        Title="拼豆像素画生成器 v0.7.36"
         Width="1280" Height="960"
         MinWidth="1280" MinHeight="960"
         WindowStartupLocation="CenterScreen"
@@ -28,6 +28,7 @@
                     <Button Grid.Row="0"
                             Content="选择图片"
                             Command="{Binding PickImageCommand}"
+                            IsEnabled="{Binding !IsEditing}"
                             HorizontalAlignment="Stretch"
                             HorizontalContentAlignment="Center"
                             Padding="16,6"
@@ -112,7 +113,8 @@
                             BorderBrush="#D0D0D0"
                             BorderThickness="1"
                             CornerRadius="4"
-                            Padding="14">
+                            Padding="14"
+                            IsEnabled="{Binding !IsEditing}">
                         <Grid RowDefinitions="*,Auto">
                             <StackPanel Grid.Row="0" VerticalAlignment="Top">
                                 <TextBlock Text="处理模式" Margin="0,0,0,4" />
@@ -491,7 +493,13 @@
             <StackPanel Orientation="Horizontal" Spacing="24">
                 <TextBlock Text="{Binding OriginalInfo}" />
                 <TextBlock Text="{Binding OutputInfo}" />
-                <TextBlock Text="{Binding BeadCount}" />
+                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding BeadCount}" VerticalAlignment="Center" />
+                    <Button Content="详情"
+                            Command="{Binding ShowDetailsCommand}"
+                            Padding="10,2"
+                            FontSize="11" />
+                </StackPanel>
             </StackPanel>
         </Border>
     </Grid>
