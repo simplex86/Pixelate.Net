@@ -32,6 +32,9 @@
     <AvaloniaResource Include="Res\icon.ico">
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </AvaloniaResource>
+    <AvaloniaResource Include="Res\github.png">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </AvaloniaResource>
   </ItemGroup>
 
 </Project>

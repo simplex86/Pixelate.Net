@@ -4,9 +4,9 @@
         xmlns:controls="using:Pixelate.Net.Avalonia.Controls"
         x:Class="Pixelate.Net.Avalonia.MainWindow"
         x:DataType="vm:MainWindowViewModel"
-        Title="拼豆像素画生成器 v0.7.36"
-        Width="1280" Height="960"
-        MinWidth="1280" MinHeight="960"
+        Title="拼豆像素画生成器 v0.7.38"
+        Width="1080" Height="960"
+        MinWidth="1080" MinHeight="960"
         WindowStartupLocation="CenterScreen"
         Icon="avares://Pixelate.Net-Avalonia/Res/icon.ico">
 
@@ -490,26 +490,44 @@
                 BorderBrush="#D0D0D0"
                 BorderThickness="0,1,0,0"
                 Padding="0,8,0,0">
-            <StackPanel Orientation="Horizontal" Spacing="24">
-                <TextBlock Text="{Binding OriginalInfo}" />
-                <TextBlock Text="{Binding OutputInfo}" />
-                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                    <TextBlock Text="{Binding BeadCount}" VerticalAlignment="Center" />
-                    <Button Content="详情"
-                            Command="{Binding ShowDetailsCommand}"
-                            IsVisible="{Binding HasPixelatedData}"
-                            Padding="10,2"
-                            FontSize="11">
-                        <Button.Resources>
-                            <SolidColorBrush x:Key="ButtonBackground" Color="#FFA500" />
-                            <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#FFB733" />
-                            <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#CC8400" />
-                            <SolidColorBrush x:Key="ButtonForeground" Color="White" />
-                            <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="White" />
-                        </Button.Resources>
-                    </Button>
+            <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="24">
+                    <TextBlock Text="{Binding OriginalInfo}" />
+                    <TextBlock Text="{Binding OutputInfo}" />
+                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding BeadCount}" VerticalAlignment="Center" />
+                        <Button Content="详情"
+                                Command="{Binding ShowDetailsCommand}"
+                                IsVisible="{Binding HasPixelatedData}"
+                                Padding="10,2"
+                                FontSize="11">
+                            <Button.Resources>
+                                <SolidColorBrush x:Key="ButtonBackground" Color="#FFA500" />
+                                <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#FFB733" />
+                                <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#CC8400" />
+                                <SolidColorBrush x:Key="ButtonForeground" Color="White" />
+                                <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="White" />
+                            </Button.Resources>
+                        </Button>
+                    </StackPanel>
                 </StackPanel>
-            </StackPanel>
+                <Button Grid.Column="1"
+                        Command="{Binding OpenGithubCommand}"
+                        Padding="4"
+                        VerticalAlignment="Center"
+                        ToolTip.Tip="GitHub 仓库">
+                    <Button.Resources>
+                        <SolidColorBrush x:Key="ButtonBackground" Color="Transparent" />
+                        <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#EAEAEA" />
+                        <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#D0D0D0" />
+                        <SolidColorBrush x:Key="ButtonBorderBrush" Color="Transparent" />
+                        <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="Transparent" />
+                        <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="Transparent" />
+                    </Button.Resources>
+                    <Image Source="avares://Pixelate.Net-Avalonia/Res/github.png"
+                           Width="20" Height="20" />
+                </Button>
+            </Grid>
         </Border>
     </Grid>
 </Window>

@@ -1164,4 +1164,23 @@ public partial class MainWindowViewModel : ObservableObject
     private const int GWL_STYLE = -16;
     private const int WS_MINIMIZEBOX = 0x00020000;
     private const int WS_MAXIMIZEBOX = 0x00010000;
+
+    /// <summary>在系统默认浏览器中打开 GitHub 仓库地址。</summary>
+    [RelayCommand]
+    private async Task OpenGithubAsync()
+    {
+        const string url = "https://github.com/simplex86/Pixelate.Net";
+        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime desktop)
+            return;
+        var mainWindow = desktop.MainWindow;
+        if (mainWindow is null) return;
+
+        try
+        {
+            await mainWindow.Launcher.LaunchUriAsync(new Uri(url));
+        }
+        catch (Exception)
+        {
+        }
+    }
 }
