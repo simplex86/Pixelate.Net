@@ -36,6 +36,21 @@ public sealed record DisplayModeOption(DisplayMode Value, string DisplayName);
 public sealed record BeadBrandOption(BeadBrand Value, string DisplayName);
 
 /// <summary>
+/// 分割数量选项（预设值或自定义）。
+/// </summary>
+public sealed record SplitSizeOption(int Value, string DisplayName, bool IsCustom);
+
+/// <summary>
+/// 分割方向选项（带中文显示名）。
+/// </summary>
+public sealed record SplitDirectionOption(SplitDirection Value, string DisplayName);
+
+/// <summary>
+/// 底板尺寸选项（带中文显示名）。
+/// </summary>
+public sealed record BoardSizeOption(int Value, string DisplayName);
+
+/// <summary>
 /// 色卡颜色项（用于像素编辑面板的颜色列表绑定）。
 /// </summary>
 public sealed class PaletteColorItem
@@ -96,10 +111,35 @@ public partial class MainWindowViewModel : ObservableObject
         new(BeadBrand.Nabbi, "Nabbi（30色）")
     };
 
+    public SplitSizeOption[] SplitSizes { get; } =
+    {
+        new(25, "25", false),
+        new(52, "52", false),
+        new(78, "78", false),
+        new(104, "104", false),
+        new(0, "自定义", true)
+    };
+
+    public SplitDirectionOption[] SplitDirections { get; } =
+    {
+        new(SplitDirection.Auto, "自动"),
+        new(SplitDirection.Horizontal, "水平"),
+        new(SplitDirection.Vertical, "竖直")
+    };
+
+    public BoardSizeOption[] BoardSizes { get; } =
+    {
+        new(25, "25×25"),
+        new(52, "52×52"),
+        new(78, "78×78"),
+        new(104, "104×104")
+    };
+
     [ObservableProperty] private string? _imagePath;
     [ObservableProperty] private string? _originalInfo;
     [ObservableProperty] private string? _outputInfo;
     [ObservableProperty] private string? _beadCount;
+    [ObservableProperty] private string? _boardInfo;
     [ObservableProperty] private Bitmap? _originalBitmap;
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanEditPixels))]
@@ -112,9 +152,6 @@ public partial class MainWindowViewModel : ObservableObject
     private byte[]? _pixelatedData;
     [ObservableProperty] private int _pixelatedWidth;
     [ObservableProperty] private int _pixelatedHeight;
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsThresholdControlsEnabled))]
-    private bool _useManualThreshold;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanExport))]
@@ -153,8 +190,6 @@ public partial class MainWindowViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(DeleteColorCommand))]
     private DeleteColorItem? _selectedDeleteColor;
 
-    [ObservableProperty] private bool _useDither;
-
     /// <summary>选择框（归一化坐标 0~1），与控件双向绑定。</summary>
     [ObservableProperty] private Rect _selection = new(0, 0, 1, 1);
 
@@ -175,25 +210,125 @@ public partial class MainWindowViewModel : ObservableObject
         set => SetProperty(ref _selectedDisplayMode, value);
     }
 
-    // NumericUpDown.Value 为 double，用 double 绑定，调用算法时取整。
-    private double _horizontalSplits = 50;
-    public double HorizontalSplits
+    // 底板尺寸选择。
+    private BoardSizeOption _selectedBoardSize;
+    public BoardSizeOption SelectedBoardSize
     {
-        get => _horizontalSplits;
+        get => _selectedBoardSize;
         set
         {
-            if (SetProperty(ref _horizontalSplits, Math.Max(1, value)))
+            if (SetProperty(ref _selectedBoardSize, value))
+            {
+                RefreshSplitSizeAvailability();
+                _ = AutoGenerateAsync();
+            }
+        }
+    }
+
+    /// <summary>是否启用多板拼接（勾选时分割数量可超过底板尺寸）。</summary>
+    [ObservableProperty] private bool _useMultiBoard;
+
+    partial void OnUseMultiBoardChanged(bool value)
+    {
+        RefreshSplitSizeAvailability();
+        _ = AutoGenerateAsync();
+    }
+
+    // 分割数量选择（预设值或自定义）。
+    private SplitSizeOption _selectedSplitSize;
+    public SplitSizeOption SelectedSplitSize
+    {
+        get => _selectedSplitSize;
+        set
+        {
+            if (SetProperty(ref _selectedSplitSize, value))
+            {
+                OnPropertyChanged(nameof(IsCustomSplitSize));
+                _ = AutoGenerateAsync();
+            }
+        }
+    }
+
+    /// <summary>是否为自定义分割数量（显示输入框）。</summary>
+    public bool IsCustomSplitSize => _selectedSplitSize?.IsCustom == true;
+
+    /// <summary>当前可选的分割数量选项：未勾选多板拼接时仅保留 ≤ 底板尺寸的选项。</summary>
+    public IReadOnlyList<SplitSizeOption> AvailableSplitSizes
+    {
+        get
+        {
+            int board = _selectedBoardSize?.Value ?? 52;
+            var list = new List<SplitSizeOption>(SplitSizes.Length);
+            foreach (var opt in SplitSizes)
+            {
+                if (opt.IsCustom || opt.Value <= board || UseMultiBoard)
+                    list.Add(opt);
+            }
+            return list;
+        }
+    }
+
+    /// <summary>自定义分割数量输入的最大值：未勾选多板拼接时为底板尺寸，否则为 1024。</summary>
+    public int CustomSplitsMax => UseMultiBoard ? 1024 : (_selectedBoardSize?.Value ?? 52);
+
+    // 自定义分割数量输入（仅 IsCustomSplitSize 时可见）。
+    private double _customSplits = 52;
+    public double CustomSplits
+    {
+        get => _customSplits;
+        set
+        {
+            int max = CustomSplitsMax;
+            double clamped = Math.Max(1, Math.Min(max, value));
+            if (SetProperty(ref _customSplits, clamped))
                 _ = AutoGenerateAsync();
         }
     }
 
-    private double _colorMergeThreshold = 30;
-    public double ColorMergeThreshold
+    /// <summary>当前生效的分割数量（预设值或自定义值取整）。</summary>
+    public int EffectiveSplits =>
+        IsCustomSplitSize ? Math.Max(1, (int)Math.Round(_customSplits)) : (_selectedSplitSize?.Value ?? 52);
+
+    /// <summary>当底板尺寸或多板拼接变化时，刷新可选分割数量并约束当前选择。</summary>
+    private void RefreshSplitSizeAvailability()
     {
-        get => _colorMergeThreshold;
+        // 先修正当前选中的分割数，确保在更新可选列表前 SelectedSplitSize 已有效，
+        // 避免 ComboBox 因旧选中项不在新列表中而清空为 null。
+        if (!UseMultiBoard)
+        {
+            int board = _selectedBoardSize?.Value ?? 52;
+            // null（初始化或被 ComboBox 清空）或预设值超过底板尺寸时，回退到底板尺寸对应的选项。
+            if (_selectedSplitSize is null || (!_selectedSplitSize.IsCustom && _selectedSplitSize.Value > board))
+            {
+                var fallback = SplitSizes.FirstOrDefault(o => !o.IsCustom && o.Value == board)
+                               ?? SplitSizes.First(o => !o.IsCustom);
+                _selectedSplitSize = fallback;
+                OnPropertyChanged(nameof(SelectedSplitSize));
+                OnPropertyChanged(nameof(IsCustomSplitSize));
+            }
+        }
+
+        // 约束自定义值不超过上限（自定义模式下上限随底板尺寸变化）。
+        int max = UseMultiBoard ? 1024 : (_selectedBoardSize?.Value ?? 52);
+        if (_customSplits > max)
+        {
+            _customSplits = max;
+            OnPropertyChanged(nameof(CustomSplits));
+        }
+
+        // 最后更新可选列表和上限，此时 SelectedSplitSize 已是有效值，ComboBox 不会清空。
+        OnPropertyChanged(nameof(AvailableSplitSizes));
+        OnPropertyChanged(nameof(CustomSplitsMax));
+    }
+
+    // 分割方向选择。
+    private SplitDirectionOption _selectedSplitDirection;
+    public SplitDirectionOption SelectedSplitDirection
+    {
+        get => _selectedSplitDirection;
         set
         {
-            if (SetProperty(ref _colorMergeThreshold, Math.Max(0, Math.Min(100, value))))
+            if (SetProperty(ref _selectedSplitDirection, value))
                 _ = AutoGenerateAsync();
         }
     }
@@ -217,8 +352,6 @@ public partial class MainWindowViewModel : ObservableObject
         {
             if (SetProperty(ref _selectedBrand, value))
             {
-                OnPropertyChanged(nameof(IsThresholdEnabled));
-                OnPropertyChanged(nameof(IsThresholdControlsEnabled));
                 OnPropertyChanged(nameof(CanEditPixels));
                 OnPropertyChanged(nameof(CanDeletePixels));
                 OnPropertyChanged(nameof(CanShowCodes));
@@ -228,12 +361,6 @@ public partial class MainWindowViewModel : ObservableObject
             }
         }
     }
-
-    /// <summary>阈值控件是否可用（仅自由色模式）。</summary>
-    public bool IsThresholdEnabled => _selectedBrand?.Value == BeadBrand.None;
-
-    /// <summary>阈值具体控件（Slider/NumericUpDown/重置）是否可用：需同时满足自由色模式且勾选手动阈值。</summary>
-    public bool IsThresholdControlsEnabled => IsThresholdEnabled && UseManualThreshold;
 
     /// <summary>是否处于正常视图（非编辑、非删除模式）。</summary>
     public bool IsNormalView => !IsPixelEditing && !IsPixelDeleting;
@@ -272,6 +399,10 @@ public partial class MainWindowViewModel : ObservableObject
     private byte[]? _sourceRgba;
     private int _sourceWidth;
     private int _sourceHeight;
+    // 底板布局信息：单张底板边长、水平/竖直方向底板数。
+    private int _boardSize = 52;
+    private int _boardsX = 1;
+    private int _boardsY = 1;
     // 最近一次计算的自动阈值，供重置使用。
     private int _autoThreshold = 30;
     // 已应用的选择框（用于实际像素化），与编辑中的 Selection 分离。
@@ -289,15 +420,20 @@ public partial class MainWindowViewModel : ObservableObject
     // 取色用 RGB→DeleteColorItem 查找表（删除模式）。
     private Dictionary<uint, DeleteColorItem> _deleteColorToItemMap = new();
     // 自动生成控制：_suppressAutoGenerate 防止 LoadImage 批量赋值时重复触发，
-    // _isGenerating 防止 GenerateAsync 内部改 ColorMergeThreshold 导致递归。
+    // _isGenerating 防止 GenerateAsync 内部重入；
+    // _pendingRegenerate 标记生成期间有参数变更，需在当前生成结束后补一次重算。
     private bool _suppressAutoGenerate;
     private bool _isGenerating;
+    private bool _pendingRegenerate;
 
     public MainWindowViewModel()
     {
         _selectedMode = Modes[1];
         _selectedDisplayMode = DisplayModes[0];
         _selectedBrand = Brands[1]; // 默认 MARD（291色）
+        _selectedBoardSize = BoardSizes[1]; // 默认 52×52
+        _selectedSplitSize = SplitSizes[1]; // 默认 52
+        _selectedSplitDirection = SplitDirections[0]; // 默认 自动
     }
 
     partial void OnPixelatedDataChanged(byte[]? value)
@@ -310,23 +446,20 @@ public partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(HasPixelatedData));
     }
 
-    partial void OnUseDitherChanged(bool value) => _ = AutoGenerateAsync();
-    partial void OnUseManualThresholdChanged(bool value) => _ = AutoGenerateAsync();
-
     /// <summary>参数变化时自动重新生成像素化结果。</summary>
     private async Task AutoGenerateAsync()
     {
-        if (_suppressAutoGenerate || _isGenerating || _sourceRgba is null || IsPixelEditing || IsPixelDeleting) return;
+        if (_suppressAutoGenerate || _sourceRgba is null || IsPixelEditing || IsPixelDeleting) return;
+        // 生成期间发生的参数变更标记为待重算，避免丢失用户最新的设置。
+        if (_isGenerating)
+        {
+            _pendingRegenerate = true;
+            return;
+        }
         await GenerateAsync();
     }
 
     private bool CanGenerate => _sourceRgba is not null;
-
-    [RelayCommand]
-    private void ResetThreshold()
-    {
-        ColorMergeThreshold = _autoThreshold;
-    }
 
     /// <summary>进入编辑模式，从已应用的选择框开始调整。</summary>
     [RelayCommand(CanExecute = nameof(CanGenerate))]
@@ -731,54 +864,94 @@ public partial class MainWindowViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanGenerate))]
     private async Task GenerateAsync()
     {
-        if (_sourceRgba is null || _isGenerating) return;
+        if (_sourceRgba is null) return;
+        // 生成期间被直接调用（如 Apply/LoadImage）时，标记待重算避免丢失。
+        if (_isGenerating)
+        {
+            _pendingRegenerate = true;
+            return;
+        }
         _isGenerating = true;
         try
         {
             var (cropData, cropW, cropH) = ExtractCropData();
             if (cropW <= 0 || cropH <= 0) return;
 
-            // 若需要重算自动阈值（裁剪变化时），无论手动/自动模式都更新 _autoThreshold，
-            // 以便 Reset 按钮能重置到当前裁剪区域对应的自动阈值；
-            // 仅在自动模式下同步更新控件显示值。
+            // 若需要重算自动阈值（裁剪变化时），更新 _autoThreshold；
+            // 阈值由算法自动计算，无手动覆盖。
             if (_needsThresholdUpdate)
             {
                 byte[] cd = cropData;
                 _autoThreshold = await Task.Run(() => ImagePixelator.ComputeAutoThreshold(cd, cropW, cropH));
-                if (!UseManualThreshold)
-                {
-                    _suppressAutoGenerate = true;
-                    ColorMergeThreshold = _autoThreshold;
-                    _suppressAutoGenerate = false;
-                }
                 _needsThresholdUpdate = false;
             }
 
-            int hs = (int)Math.Round(HorizontalSplits);
-            if (hs < 1) hs = 1;
-            int threshold = UseManualThreshold ? (int)Math.Round(ColorMergeThreshold) : _autoThreshold;
+            int splits = EffectiveSplits;
+            if (splits < 1) splits = 1;
+            int threshold = _autoThreshold;
             if (threshold < 0) threshold = 0;
             if (threshold > 100) threshold = 100;
             var mode = _selectedMode?.Value ?? ProcessMode.Realistic;
+            var userDir = _selectedSplitDirection?.Value ?? SplitDirection.Auto;
+            bool multiBoard = UseMultiBoard;
+            int boardSize = _selectedBoardSize?.Value ?? 52;
 
+            // 解析 Auto 方向：
+            // 未勾选多板拼接 → 主方向为尺寸更大的方向（让长边填满底板，短边自动容纳）；
+            // 勾选多板拼接 → 主方向为尺寸更小的方向（让短边填满一张底板，长边跨多张）。
+            SplitDirection resolvedDir;
+            if (userDir != SplitDirection.Auto)
+            {
+                resolvedDir = userDir;
+            }
+            else if (!multiBoard)
+            {
+                resolvedDir = cropW >= cropH ? SplitDirection.Horizontal : SplitDirection.Vertical;
+            }
+            else
+            {
+                resolvedDir = cropW <= cropH ? SplitDirection.Horizontal : SplitDirection.Vertical;
+            }
+
+            // 未勾选多板拼接时，通过 MaxOutputDimension 约束输出宽高均不超过底板尺寸，
+            // 无论分割方向如何选择都能保证像素画完全装入单张底板。
             var options = new PixelateOptions
             {
-                HorizontalSplits = hs,
+                Splits = splits,
+                SplitDirection = resolvedDir,
                 ColorMergeThreshold = threshold,
                 Mode = mode,
                 Brand = _selectedBrand?.Value ?? BeadBrand.None,
-                Dither = UseDither
+                MaxOutputDimension = multiBoard ? 0 : boardSize
             };
 
-            int ps = Math.Max(1, (int)Math.Ceiling((double)cropW / hs));
-            int outW = (cropW + ps - 1) / ps;
-            int outH = (cropH + ps - 1) / ps;
+            // 算法层输出像素画原始尺寸。
+            byte[] artRgba = await Task.Run(() => ImagePixelator.Pixelate(cropData, cropW, cropH, options));
+            var (outW, outH) = ImagePixelator.GetOutputSize(cropW, cropH, splits, resolvedDir, options.MaxOutputDimension);
 
-            byte[] outRgba = await Task.Run(() => ImagePixelator.Pixelate(cropData, cropW, cropH, options));
+            // 计算底板布局：
+            // 未勾选多板拼接时，强制单张底板（1×1），像素画已由算法约束不超出底板尺寸；
+            // 勾选多板拼接时，画布按 outW/outH 向上取整为底板尺寸的整数倍，可跨多张底板。
+            _boardSize = boardSize;
+            if (multiBoard)
+            {
+                _boardsX = Math.Max(1, (int)Math.Ceiling(outW / (double)boardSize));
+                _boardsY = Math.Max(1, (int)Math.Ceiling(outH / (double)boardSize));
+            }
+            else
+            {
+                _boardsX = 1;
+                _boardsY = 1;
+            }
+            int canvasW = _boardsX * boardSize;
+            int canvasH = _boardsY * boardSize;
 
-            PixelatedData = outRgba;
-            PixelatedWidth = outW;
-            PixelatedHeight = outH;
+            // 将像素画居中放置于画布上，空白区域为透明像素。
+            byte[] canvasData = await Task.Run(() => CompositeOnCanvas(artRgba, outW, outH, canvasW, canvasH));
+
+            PixelatedData = canvasData;
+            PixelatedWidth = canvasW;
+            PixelatedHeight = canvasH;
 
             var brand = _selectedBrand?.Value ?? BeadBrand.None;
             if (brand != BeadBrand.None)
@@ -795,7 +968,11 @@ public partial class MainWindowViewModel : ObservableObject
             }
 
             OutputInfo = $"像素化后分辨率: {outW}×{outH}";
-            BeadCount = $"拼豆总数: {outW * outH}";
+            RefreshBeadCount();
+            int totalBoards = _boardsX * _boardsY;
+            BoardInfo = totalBoards <= 1
+                ? $"底板: {_boardsX}×{_boardsY}"
+                : $"底板: {_boardsX}×{_boardsY} (共{totalBoards}张)";
         }
         catch (Exception)
         {
@@ -803,7 +980,41 @@ public partial class MainWindowViewModel : ObservableObject
         finally
         {
             _isGenerating = false;
+            // 生成期间若有参数变更，补一次重算以使用用户最新的设置。
+            if (_pendingRegenerate)
+            {
+                _pendingRegenerate = false;
+                _ = AutoGenerateAsync();
+            }
         }
+    }
+
+    /// <summary>
+    /// 将像素画居中合成到画布上，空白区域为透明 (alpha=0)。
+    /// 像素画超出画布时按居中裁剪。
+    /// </summary>
+    private static byte[] CompositeOnCanvas(byte[] artRgba, int outW, int outH, int canvasW, int canvasH)
+    {
+        byte[] canvas = new byte[canvasW * canvasH * 4]; // 默认全 0 = 透明
+        int offsetX = (canvasW - outW) / 2;
+        int offsetY = (canvasH - outH) / 2;
+
+        // 计算像素画与画布的交集（处理 art 大于 canvas 的裁剪情况）。
+        int dstX0 = Math.Max(0, offsetX);
+        int dstY0 = Math.Max(0, offsetY);
+        int srcX0 = Math.Max(0, -offsetX);
+        int srcY0 = Math.Max(0, -offsetY);
+        int copyW = Math.Min(outW - srcX0, canvasW - dstX0);
+        int copyH = Math.Min(outH - srcY0, canvasH - dstY0);
+        if (copyW <= 0 || copyH <= 0) return canvas;
+
+        for (int y = 0; y < copyH; y++)
+        {
+            int srcRow = ((srcY0 + y) * outW + srcX0) * 4;
+            int dstRow = ((dstY0 + y) * canvasW + dstX0) * 4;
+            Buffer.BlockCopy(artRgba, srcRow, canvas, dstRow, copyW * 4);
+        }
+        return canvas;
     }
 
     /// <summary>根据已应用的选择框从源图像中提取裁剪数据。</summary>
@@ -896,11 +1107,10 @@ public partial class MainWindowViewModel : ObservableObject
             _appliedSelection = new Rect(0, 0, 1, 1);
             IsEditing = false;
 
-            // 计算自动阈值并设为阈值的默认值（基于框选部分）。
+            // 计算自动阈值（基于框选部分）。
             var (cropData, cropW, cropH) = ExtractCropData();
             byte[] cd = cropData;
             _autoThreshold = await Task.Run(() => ImagePixelator.ComputeAutoThreshold(cd, cropW, cropH));
-            ColorMergeThreshold = _autoThreshold;
             _needsThresholdUpdate = false;
 
             ImagePath = path;
@@ -958,7 +1168,8 @@ public partial class MainWindowViewModel : ObservableObject
             await PixelExporter.ExportAsync(
                 PixelatedData, PixelatedWidth, PixelatedHeight,
                 SelectedDisplayMode.Value, ShowCodes, ColorCodeMap,
-                path, format);
+                path, format, transparentBackground: true,
+                boardSize: _boardSize);
         }
         catch (Exception)
         {
@@ -982,7 +1193,7 @@ public partial class MainWindowViewModel : ObservableObject
                 PixelatedData, PixelatedWidth, PixelatedHeight,
                 SelectedDisplayMode.Value, ShowCodes, ColorCodeMap,
                 $"pixelated_{PixelatedWidth}x{PixelatedHeight}",
-                owner);
+                owner, _boardSize);
         }
         catch (Exception)
         {

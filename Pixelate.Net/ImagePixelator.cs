@@ -11,25 +11,52 @@ namespace Pixelate.Net
         // 人眼各通道敏感度（BT.601），用于 Realistic 模式映射到最近调色板色。
         private const double Wr = 0.299, Wg = 0.587, Wb = 0.114;
 
-        // 4x4 Bayer 有序抖动矩阵（值 0-15，按蓝噪声分布，周期 4 块）
-        private static readonly byte[,] Bayer4x4 = {
-            {  0,  8,  2, 10 },
-            { 12,  4, 14,  6 },
-            {  3, 11,  1,  9 },
-            { 15,  7, 13,  5 }
-        };
-        private const float BayerStrength = 32f; // 抖动强度：偏移范围 ±16
+        /// <summary>
+        /// 根据分割数与分割方向计算输出尺寸。
+        /// Horizontal：像素尺寸由宽度和分割数计算；Vertical：由高度和分割数计算。
+        /// 使用浮点像素尺寸，主方向输出恰好为 splits 个像素。
+        /// </summary>
+        public static (int Width, int Height) GetOutputSize(int width, int height, int splits, SplitDirection direction)
+        {
+            if (splits < 1) throw new ArgumentOutOfRangeException(nameof(splits));
+            var dir = direction == SplitDirection.Auto ? SplitDirection.Horizontal : direction;
+            double ps = dir == SplitDirection.Vertical
+                ? Math.Max(1.0, (double)height / splits)
+                : Math.Max(1.0, (double)width / splits);
+            int outW = (int)Math.Ceiling(width / ps);
+            int outH = (int)Math.Ceiling(height / ps);
+            return (outW, outH);
+        }
 
         /// <summary>
-        /// 根据 HorizontalSplits 计算输出尺寸。
+        /// 根据分割数、分割方向与最大边长约束计算输出尺寸。
+        /// maxOutputDimension &gt; 0 时，自动增大像素块尺寸以保证宽高均不超过该值。
+        /// 使用浮点像素尺寸，在满足约束前提下主方向尽可能接近 splits 个像素。
         /// </summary>
-        public static (int Width, int Height) GetOutputSize(int width, int height, int horizontalSplits)
+        public static (int Width, int Height) GetOutputSize(int width, int height, int splits, SplitDirection direction, int maxOutputDimension)
         {
-            if (horizontalSplits < 1) throw new ArgumentOutOfRangeException(nameof(horizontalSplits));
-            int ps = Math.Max(1, (int)Math.Ceiling((double)width / horizontalSplits));
-            int outW = (width + ps - 1) / ps;
-            int outH = (height + ps - 1) / ps;
+            if (splits < 1) throw new ArgumentOutOfRangeException(nameof(splits));
+            var dir = direction == SplitDirection.Auto ? SplitDirection.Horizontal : direction;
+            double ps = dir == SplitDirection.Vertical
+                ? Math.Max(1.0, (double)height / splits)
+                : Math.Max(1.0, (double)width / splits);
+            ps = ApplyMaxOutputDimension(width, height, ps, maxOutputDimension);
+            int outW = (int)Math.Ceiling(width / ps);
+            int outH = (int)Math.Ceiling(height / ps);
             return (outW, outH);
+        }
+
+        /// <summary>
+        /// 若设置了最大输出边长，确保 ps 足够大以使输出宽高均不超过此值。
+        /// 在满足约束的前提下尽可能使用较小的 ps（较高分辨率）。
+        /// </summary>
+        private static double ApplyMaxOutputDimension(int width, int height, double ps, int maxOutputDimension)
+        {
+            if (maxOutputDimension <= 0) return ps;
+            double minPsW = Math.Max(1.0, (double)width / maxOutputDimension);
+            double minPsH = Math.Max(1.0, (double)height / maxOutputDimension);
+            double minPs = Math.Max(minPsW, minPsH);
+            return Math.Max(ps, minPs);
         }
 
         /// <summary>
@@ -55,15 +82,21 @@ namespace Pixelate.Net
             ArgumentNullException.ThrowIfNull(options);
             if (width <= 0) throw new ArgumentOutOfRangeException(nameof(width));
             if (height <= 0) throw new ArgumentOutOfRangeException(nameof(height));
-            if (options.HorizontalSplits < 1) throw new ArgumentOutOfRangeException(nameof(options), "HorizontalSplits 必须 >= 1");
+            if (options.Splits < 1) throw new ArgumentOutOfRangeException(nameof(options), "Splits 必须 >= 1");
             int expected = width * height * 4;
             if (sourceRgba.Length < expected)
                 throw new ArgumentException("源缓冲区过小，与指定的宽高不匹配。", nameof(sourceRgba));
 
-            // 像素块大小由横向分割数推导
-            int ps = Math.Max(1, (int)Math.Ceiling((double)width / options.HorizontalSplits));
-            int outW = (width + ps - 1) / ps;
-            int outH = (height + ps - 1) / ps;
+            // 像素块大小由分割数和分割方向推导；Auto 兜底为 Horizontal。
+            // 使用浮点 ps 使主方向输出恰好为 splits 个像素（非均匀块大小）。
+            var dir = options.SplitDirection == SplitDirection.Auto ? SplitDirection.Horizontal : options.SplitDirection;
+            double ps = dir == SplitDirection.Vertical
+                ? Math.Max(1.0, (double)height / options.Splits)
+                : Math.Max(1.0, (double)width / options.Splits);
+            // 若设置了最大输出边长，确保 ps 足够大以使输出宽高均不超过此值。
+            ps = ApplyMaxOutputDimension(width, height, ps, options.MaxOutputDimension);
+            int outW = (int)Math.Ceiling(width / ps);
+            int outH = (int)Math.Ceiling(height / ps);
             byte[] output = new byte[outW * outH * 4];
 
             // 颜色合并（算法层不自动计算阈值，由前端设置）
@@ -87,11 +120,7 @@ namespace Pixelate.Net
             }
 
             // 分块取色
-            if (options.Dither && palette != null)
-            {
-                PixelateOrdered(sourceRgba, width, height, ps, outW, outH, palette, output);
-            }
-            else if (options.Mode == ProcessMode.Cartoon)
+            if (options.Mode == ProcessMode.Cartoon)
                 PixelateCartoon(sourceRgba, width, height, ps, outW, outH, palette, assignments, output);
             else
                 PixelateRealistic(sourceRgba, width, height, ps, outW, outH, palette, output);
@@ -104,17 +133,17 @@ namespace Pixelate.Net
         /// 过渡柔和，适合照片。
         /// </summary>
         private static void PixelateRealistic(
-            ReadOnlySpan<byte> src, int width, int height, int ps, int outW, int outH,
+            ReadOnlySpan<byte> src, int width, int height, double ps, int outW, int outH,
             byte[]? palette, byte[] dst)
         {
             for (int oy = 0; oy < outH; oy++)
             {
-                int y0 = oy * ps;
-                int y1 = Math.Min(y0 + ps, height);
+                int y0 = (int)(oy * ps);
+                int y1 = Math.Min((int)((oy + 1) * ps), height);
                 for (int ox = 0; ox < outW; ox++)
                 {
-                    int x0 = ox * ps;
-                    int x1 = Math.Min(x0 + ps, width);
+                    int x0 = (int)(ox * ps);
+                    int x1 = Math.Min((int)((ox + 1) * ps), width);
 
                     long r = 0, g = 0, b = 0, a = 0;
                     int count = 0;
@@ -157,73 +186,13 @@ namespace Pixelate.Net
         }
 
         /// <summary>
-        /// 有序抖动（Bayer 4x4 矩阵）：块内平均色 + 位置相关阈值偏移，再映射到最近调色板色。
-        /// 图案规律、可预测，适合拼豆装配。无误差扩散，无方向性偏差。
-        /// Cartoon 与 Realistic 模式在抖动下统一为"平均色 + 偏移 → 最近调色板色"，
-        /// 候选范围为整个调色板（不做 top-3 限制）。
-        /// </summary>
-        private static void PixelateOrdered(
-            ReadOnlySpan<byte> src, int width, int height, int ps, int outW, int outH,
-            byte[] palette, byte[] dst)
-        {
-            const int bayerSize = 4;
-            for (int oy = 0; oy < outH; oy++)
-            {
-                int y0 = oy * ps;
-                int y1 = Math.Min(y0 + ps, height);
-                for (int ox = 0; ox < outW; ox++)
-                {
-                    int x0 = ox * ps;
-                    int x1 = Math.Min(x0 + ps, width);
-
-                    long r = 0, g = 0, b = 0, a = 0;
-                    int count = 0;
-                    for (int y = y0; y < y1; y++)
-                    {
-                        int row = y * width * 4;
-                        for (int x = x0; x < x1; x++)
-                        {
-                            int i = row + x * 4;
-                            r += src[i];
-                            g += src[i + 1];
-                            b += src[i + 2];
-                            a += src[i + 3];
-                            count++;
-                        }
-                    }
-
-                    float avgR = r / (float)count;
-                    float avgG = g / (float)count;
-                    float avgB = b / (float)count;
-
-                    // Bayer 阈值偏移：归一化到 [-0.5, 0.5) 后乘以强度
-                    float threshold = (Bayer4x4[oy % bayerSize, ox % bayerSize] + 0.5f) / (bayerSize * bayerSize) - 0.5f;
-                    float offset = threshold * BayerStrength;
-
-                    // 应用偏移并钳制到 [0, 255]
-                    byte pr = (byte)Math.Clamp(Math.Round(avgR + offset), 0, 255);
-                    byte pg = (byte)Math.Clamp(Math.Round(avgG + offset), 0, 255);
-                    byte pb = (byte)Math.Clamp(Math.Round(avgB + offset), 0, 255);
-
-                    int best = NearestPaletteIndex(pr, pg, pb, palette);
-
-                    int di = (oy * outW + ox) * 4;
-                    dst[di] = palette[best * 3];
-                    dst[di + 1] = palette[best * 3 + 1];
-                    dst[di + 2] = palette[best * 3 + 2];
-                    dst[di + 3] = (byte)(a / count);
-                }
-            }
-        }
-
-        /// <summary>
         /// 卡通模式：块内取众数（出现最多的颜色）。
         /// 若有调色板：统计块内簇 ID 众数，输出对应调色板色。
         /// 若无调色板：统计块内 5 位量化色众数，输出该色的平均原始色。
         /// 边缘锐利，适合卡通/插画。
         /// </summary>
         private static void PixelateCartoon(
-            ReadOnlySpan<byte> src, int width, int height, int ps, int outW, int outH,
+            ReadOnlySpan<byte> src, int width, int height, double ps, int outW, int outH,
             byte[]? palette, int[]? assignments, byte[] dst)
         {
             if (palette != null && assignments != null)
@@ -242,7 +211,7 @@ namespace Pixelate.Net
 
         /// <summary>有调色板：块内簇 ID 众数。</summary>
         private static void CartoonWithPalette(
-            ReadOnlySpan<byte> src, int width, int height, int ps, int outW, int outH,
+            ReadOnlySpan<byte> src, int width, int height, double ps, int outW, int outH,
             byte[] palette, int[] assignments, byte[] dst)
         {
             int palCount = palette.Length / 3;
@@ -250,12 +219,12 @@ namespace Pixelate.Net
 
             for (int oy = 0; oy < outH; oy++)
             {
-                int y0 = oy * ps;
-                int y1 = Math.Min(y0 + ps, height);
+                int y0 = (int)(oy * ps);
+                int y1 = Math.Min((int)((oy + 1) * ps), height);
                 for (int ox = 0; ox < outW; ox++)
                 {
-                    int x0 = ox * ps;
-                    int x1 = Math.Min(x0 + ps, width);
+                    int x0 = (int)(ox * ps);
+                    int x1 = Math.Min((int)((ox + 1) * ps), width);
 
                     Array.Clear(blockCounts, 0, palCount);
                     long aSum = 0;
@@ -297,7 +266,7 @@ namespace Pixelate.Net
         /// 先一次性构建 32768 项 5 位量化 bin → 品牌色索引查找表，再每块统计品牌色号频率取众数。
         /// </summary>
         private static void CartoonWithBeadPalette(
-            ReadOnlySpan<byte> src, int width, int height, int ps, int outW, int outH,
+            ReadOnlySpan<byte> src, int width, int height, double ps, int outW, int outH,
             byte[] palette, byte[] dst)
         {
             int palCount = palette.Length / 3;
@@ -317,12 +286,12 @@ namespace Pixelate.Net
 
             for (int oy = 0; oy < outH; oy++)
             {
-                int y0 = oy * ps;
-                int y1 = Math.Min(y0 + ps, height);
+                int y0 = (int)(oy * ps);
+                int y1 = Math.Min((int)((oy + 1) * ps), height);
                 for (int ox = 0; ox < outW; ox++)
                 {
-                    int x0 = ox * ps;
-                    int x1 = Math.Min(x0 + ps, width);
+                    int x0 = (int)(ox * ps);
+                    int x1 = Math.Min((int)((ox + 1) * ps), width);
 
                     Array.Clear(blockCounts, 0, palCount);
                     long aSum = 0;
@@ -363,7 +332,7 @@ namespace Pixelate.Net
 
         /// <summary>无调色板：块内 5 位量化色众数，输出该 bin 的平均原始色。</summary>
         private static void CartoonNoPalette(
-            ReadOnlySpan<byte> src, int width, int height, int ps, int outW, int outH, byte[] dst)
+            ReadOnlySpan<byte> src, int width, int height, double ps, int outW, int outH, byte[] dst)
         {
             const int BinCount = 32 * 32 * 32;
             int[] hist = new int[BinCount];
@@ -373,12 +342,12 @@ namespace Pixelate.Net
 
             for (int oy = 0; oy < outH; oy++)
             {
-                int y0 = oy * ps;
-                int y1 = Math.Min(y0 + ps, height);
+                int y0 = (int)(oy * ps);
+                int y1 = Math.Min((int)((oy + 1) * ps), height);
                 for (int ox = 0; ox < outW; ox++)
                 {
-                    int x0 = ox * ps;
-                    int x1 = Math.Min(x0 + ps, width);
+                    int x0 = (int)(ox * ps);
+                    int x1 = Math.Min((int)((ox + 1) * ps), width);
 
                     // 统计块内 5 位量化色频率
                     long aSum = 0;

@@ -4,9 +4,9 @@
         xmlns:controls="using:Pixelate.Net.Avalonia.Controls"
         x:Class="Pixelate.Net.Avalonia.MainWindow"
         x:DataType="vm:MainWindowViewModel"
-        Title="拼豆像素画生成器 v0.7.38"
-        Width="1080" Height="960"
-        MinWidth="1080" MinHeight="960"
+        Title="拼豆像素画生成器 v0.8.45"
+        Width="1280" Height="1080"
+        MinWidth="1080" MinHeight="1040"
         WindowStartupLocation="CenterScreen"
         Icon="avares://Pixelate.Net-Avalonia/Res/icon.ico">
 
@@ -129,12 +129,50 @@
                                     </ComboBox.ItemTemplate>
                                 </ComboBox>
 
-                                <TextBlock Text="横向分割数量" Margin="0,0,0,4" />
+                                <TextBlock Text="底板尺寸" Margin="0,0,0,4" />
+                                <ComboBox ItemsSource="{Binding BoardSizes}"
+                                          SelectedItem="{Binding SelectedBoardSize}"
+                                          HorizontalAlignment="Stretch"
+                                          Margin="0,0,0,8">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:BoardSizeOption">
+                                            <TextBlock Text="{Binding DisplayName}" />
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                                <CheckBox Content="多板拼接"
+                                          IsChecked="{Binding UseMultiBoard}"
+                                          Margin="0,0,0,14" />
+
+                                <TextBlock Text="分割数量" Margin="0,0,0,4" />
+                                <ComboBox ItemsSource="{Binding AvailableSplitSizes}"
+                                          SelectedItem="{Binding SelectedSplitSize}"
+                                          HorizontalAlignment="Stretch"
+                                          Margin="0,0,0,6">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:SplitSizeOption">
+                                            <TextBlock Text="{Binding DisplayName}" />
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
                                 <NumericUpDown Minimum="1"
-                                               Maximum="1024"
-                                               Value="{Binding HorizontalSplits}"
+                                               Maximum="{Binding CustomSplitsMax}"
+                                               Value="{Binding CustomSplits}"
                                                FormatString="0"
+                                               IsVisible="{Binding IsCustomSplitSize}"
                                                Margin="0,0,0,14" />
+
+                                <TextBlock Text="分割方向" Margin="0,0,0,4" />
+                                <ComboBox ItemsSource="{Binding SplitDirections}"
+                                          SelectedItem="{Binding SelectedSplitDirection}"
+                                          HorizontalAlignment="Stretch"
+                                          Margin="0,0,0,14">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:SplitDirectionOption">
+                                            <TextBlock Text="{Binding DisplayName}" />
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
 
                                 <TextBlock Text="色卡" Margin="0,0,0,4" />
                                 <ComboBox ItemsSource="{Binding Brands}"
@@ -147,49 +185,6 @@
                                         </DataTemplate>
                                     </ComboBox.ItemTemplate>
                                 </ComboBox>
-
-								<CheckBox Content="颜色抖动"
-                                          IsChecked="{Binding UseDither}"
-                                          Margin="0,0,0,14" />
-
-                                <Grid ColumnDefinitions="Auto,15,*" Margin="0,0,0,14">
-                                    <CheckBox Grid.Column="0"
-                                              Content="手动调整阈值"
-                                              IsChecked="{Binding UseManualThreshold}"
-                                              IsEnabled="{Binding IsThresholdEnabled}"
-                                              VerticalAlignment="Center" />
-                                    <Slider Grid.Column="2"
-                                            Minimum="0"
-                                            Maximum="100"
-                                            Value="{Binding ColorMergeThreshold}"
-                                            TickFrequency="5"
-                                            IsSnapToTickEnabled="False"
-                                            IsEnabled="{Binding IsThresholdControlsEnabled}"
-                                            VerticalAlignment="Center" />
-                                </Grid>
-
-                                <Grid ColumnDefinitions="*,8,Auto" Margin="0,0,0,14">
-                                    <NumericUpDown Grid.Column="0"
-                                                   Minimum="0"
-                                                   Maximum="100"
-                                                   Value="{Binding ColorMergeThreshold}"
-                                                   FormatString="0"
-                                                   IsEnabled="{Binding IsThresholdControlsEnabled}" />
-                                    <Button Grid.Column="2"
-                                            Content="重置"
-                                            Command="{Binding ResetThresholdCommand}"
-                                            IsEnabled="{Binding IsThresholdControlsEnabled}"
-                                            Classes="btn-reset"
-                                            Padding="14,6">
-                                        <Button.Resources>
-                                            <SolidColorBrush x:Key="ButtonBackground" Color="#FFA500" />
-                                            <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#FFB733" />
-                                            <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#CC8400" />
-                                            <SolidColorBrush x:Key="ButtonForeground" Color="White" />
-                                            <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="White" />
-                                        </Button.Resources>
-                                    </Button>
-                                </Grid>
 
                                 <TextBlock Text="显示模式" Margin="0,0,0,4" />
                                 <ComboBox ItemsSource="{Binding DisplayModes}"
@@ -489,11 +484,12 @@
         <Border Grid.Row="1"
                 BorderBrush="#D0D0D0"
                 BorderThickness="0,1,0,0"
-                Padding="0,8,0,0">
+                Padding="0,0,0,0">
             <Grid ColumnDefinitions="*,Auto">
-                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="24">
-                    <TextBlock Text="{Binding OriginalInfo}" />
-                    <TextBlock Text="{Binding OutputInfo}" />
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="24" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding OriginalInfo}" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding OutputInfo}" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding BoardInfo}" VerticalAlignment="Center" />
                     <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                         <TextBlock Text="{Binding BeadCount}" VerticalAlignment="Center" />
                         <Button Content="详情"
@@ -525,7 +521,7 @@
                         <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="Transparent" />
                     </Button.Resources>
                     <Image Source="avares://Pixelate.Net-Avalonia/Res/github.png"
-                           Width="20" Height="20" />
+                           Width="21" Height="21" />
                 </Button>
             </Grid>
         </Border>

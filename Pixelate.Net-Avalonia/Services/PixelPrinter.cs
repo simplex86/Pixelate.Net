@@ -54,20 +54,22 @@ public static class PixelPrinter
     /// Windows 上弹出系统打印对话框；其他平台导出 PDF 临时文件并用系统默认查看器打开。
     /// </summary>
     /// <param name="owner">主窗口引用，非 Windows 平台用于调用 Launcher；可省略。</param>
+    /// <param name="boardSize">单张底板边长；&gt;0 时按底板分割多页打印。</param>
     public static async Task PrintAsync(
         byte[] rgba, int width, int height,
         DisplayMode mode, bool showCodes,
         IReadOnlyDictionary<uint, string>? codeMap,
         string documentName,
-        Window? owner = null)
+        Window? owner = null,
+        int boardSize = 0)
     {
         if (OperatingSystem.IsWindows())
         {
-            await PrintWindowsAsync(rgba, width, height, mode, showCodes, codeMap, documentName);
+            await PrintWindowsAsync(rgba, width, height, mode, showCodes, codeMap, documentName, boardSize);
         }
         else
         {
-            await PrintViaPdfLauncherAsync(rgba, width, height, mode, showCodes, codeMap, documentName, owner);
+            await PrintViaPdfLauncherAsync(rgba, width, height, mode, showCodes, codeMap, documentName, owner, boardSize);
         }
     }
 
@@ -77,7 +79,8 @@ public static class PixelPrinter
         byte[] rgba, int width, int height,
         DisplayMode mode, bool showCodes,
         IReadOnlyDictionary<uint, string>? codeMap,
-        string documentName)
+        string documentName,
+        int boardSize)
     {
         // 在后台线程渲染 PNG 字节，避免阻塞 UI
         // 打印时使用白底渲染，被删除（透明）像素打印成白色
@@ -100,7 +103,8 @@ public static class PixelPrinter
         DisplayMode mode, bool showCodes,
         IReadOnlyDictionary<uint, string>? codeMap,
         string documentName,
-        Window? owner)
+        Window? owner,
+        int boardSize)
     {
         // 生成唯一临时文件路径
         string tempPath = Path.Combine(Path.GetTempPath(), $"{documentName}_{Guid.NewGuid():N}.pdf");
@@ -109,7 +113,7 @@ public static class PixelPrinter
             // 打印时使用白底渲染，被删除（透明）像素打印成白色
             await PixelExporter.ExportAsync(
                 rgba, width, height, mode, showCodes, codeMap, tempPath, "PDF",
-                transparentBackground: false);
+                transparentBackground: false, boardSize: boardSize);
 
             if (owner is null)
                 return;
