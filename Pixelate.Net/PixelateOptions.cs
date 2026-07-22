@@ -64,5 +64,12 @@ namespace Pixelate.Net
         /// 在此前提下尽可能保留较高的分辨率。
         /// </summary>
         public int MaxOutputDimension { get; set; } = 0;
+
+        /// <summary>
+        /// Alpha 二值化阈值 [0, 255]。像素画中每个像素的 alpha 只能是 0 或 255：
+        /// 块内平均 alpha &lt; 阈值 → 输出 0（透明）；否则 → 输出 255（不透明）。
+        /// 默认 128（半数以上不透明即视为不透明）。
+        /// </summary>
+        public int AlphaThreshold { get; set; } = 128;
     }
 }

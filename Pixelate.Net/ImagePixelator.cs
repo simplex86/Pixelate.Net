@@ -120,10 +120,11 @@ namespace Pixelate.Net
             }
 
             // 分块取色
+            int alphaThreshold = options.AlphaThreshold;
             if (options.Mode == ProcessMode.Cartoon)
-                PixelateCartoon(sourceRgba, width, height, ps, outW, outH, palette, assignments, output);
+                PixelateCartoon(sourceRgba, width, height, ps, outW, outH, palette, assignments, output, alphaThreshold);
             else
-                PixelateRealistic(sourceRgba, width, height, ps, outW, outH, palette, output);
+                PixelateRealistic(sourceRgba, width, height, ps, outW, outH, palette, output, alphaThreshold);
 
             return output;
         }
@@ -134,7 +135,7 @@ namespace Pixelate.Net
         /// </summary>
         private static void PixelateRealistic(
             ReadOnlySpan<byte> src, int width, int height, double ps, int outW, int outH,
-            byte[]? palette, byte[] dst)
+            byte[]? palette, byte[] dst, int alphaThreshold)
         {
             for (int oy = 0; oy < outH; oy++)
             {
@@ -180,7 +181,7 @@ namespace Pixelate.Net
                         dst[di + 1] = avgG;
                         dst[di + 2] = avgB;
                     }
-                    dst[di + 3] = (byte)(a / count);
+                    dst[di + 3] = BinaryAlpha(a, count, alphaThreshold);
                 }
             }
         }
@@ -193,26 +194,26 @@ namespace Pixelate.Net
         /// </summary>
         private static void PixelateCartoon(
             ReadOnlySpan<byte> src, int width, int height, double ps, int outW, int outH,
-            byte[]? palette, int[]? assignments, byte[] dst)
+            byte[]? palette, int[]? assignments, byte[] dst, int alphaThreshold)
         {
             if (palette != null && assignments != null)
             {
-                CartoonWithPalette(src, width, height, ps, outW, outH, palette, assignments, dst);
+                CartoonWithPalette(src, width, height, ps, outW, outH, palette, assignments, dst, alphaThreshold);
             }
             else if (palette != null)
             {
-                CartoonWithBeadPalette(src, width, height, ps, outW, outH, palette, dst);
+                CartoonWithBeadPalette(src, width, height, ps, outW, outH, palette, dst, alphaThreshold);
             }
             else
             {
-                CartoonNoPalette(src, width, height, ps, outW, outH, dst);
+                CartoonNoPalette(src, width, height, ps, outW, outH, dst, alphaThreshold);
             }
         }
 
         /// <summary>有调色板：块内簇 ID 众数。</summary>
         private static void CartoonWithPalette(
             ReadOnlySpan<byte> src, int width, int height, double ps, int outW, int outH,
-            byte[] palette, int[] assignments, byte[] dst)
+            byte[] palette, int[] assignments, byte[] dst, int alphaThreshold)
         {
             int palCount = palette.Length / 3;
             int[] blockCounts = new int[palCount];
@@ -256,7 +257,7 @@ namespace Pixelate.Net
                     dst[di] = palette[bestCluster * 3];
                     dst[di + 1] = palette[bestCluster * 3 + 1];
                     dst[di + 2] = palette[bestCluster * 3 + 2];
-                    dst[di + 3] = (byte)(aSum / aCount);
+                    dst[di + 3] = BinaryAlpha(aSum, aCount, alphaThreshold);
                 }
             }
         }
@@ -267,7 +268,7 @@ namespace Pixelate.Net
         /// </summary>
         private static void CartoonWithBeadPalette(
             ReadOnlySpan<byte> src, int width, int height, double ps, int outW, int outH,
-            byte[] palette, byte[] dst)
+            byte[] palette, byte[] dst, int alphaThreshold)
         {
             int palCount = palette.Length / 3;
 
@@ -325,14 +326,14 @@ namespace Pixelate.Net
                     dst[di] = palette[bestCluster * 3];
                     dst[di + 1] = palette[bestCluster * 3 + 1];
                     dst[di + 2] = palette[bestCluster * 3 + 2];
-                    dst[di + 3] = (byte)(aSum / aCount);
+                    dst[di + 3] = BinaryAlpha(aSum, aCount, alphaThreshold);
                 }
             }
         }
 
         /// <summary>无调色板：块内 5 位量化色众数，输出该 bin 的平均原始色。</summary>
         private static void CartoonNoPalette(
-            ReadOnlySpan<byte> src, int width, int height, double ps, int outW, int outH, byte[] dst)
+            ReadOnlySpan<byte> src, int width, int height, double ps, int outW, int outH, byte[] dst, int alphaThreshold)
         {
             const int BinCount = 32 * 32 * 32;
             int[] hist = new int[BinCount];
@@ -388,7 +389,7 @@ namespace Pixelate.Net
                         dst[di + 1] = (byte)(sumG[bestBin] / bestCount);
                         dst[di + 2] = (byte)(sumB[bestBin] / bestCount);
                     }
-                    dst[di + 3] = (byte)(aSum / aCount);
+                    dst[di + 3] = BinaryAlpha(aSum, aCount, alphaThreshold);
 
                     // 清零用过的 bin 供下块复用
                     ClearUsedBins(hist, sumR, sumG, sumB, y0, y1, x0, x1, width, src);
@@ -414,6 +415,17 @@ namespace Pixelate.Net
                     sumB[bin] = 0;
                 }
             }
+        }
+
+        /// <summary>
+        /// 像素画 Alpha 二值化：块内平均 alpha &lt; 阈值 → 0（透明），否则 → 255（不透明）。
+        /// count 为 0 时视为透明。
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static byte BinaryAlpha(long sum, int count, int threshold)
+        {
+            if (count <= 0) return 0;
+            return (sum / count) < threshold ? (byte)0 : (byte)255;
         }
 
         /// <summary>在调色板中找加权距离最近的色索引。</summary>

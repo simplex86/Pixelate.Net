@@ -1084,23 +1084,11 @@ public partial class MainWindowViewModel : ObservableObject
             using var img = await Task.Run(() => SixLabors.ImageSharp.Image.Load<Rgba32>(fs));
 
             // 取出非预乘 RGBA 字节，行优先，步长 = width*4。
+            // 保留原始 alpha 通道，供算法层对透明区域进行二值化（输出 0 或 255）。
             _sourceWidth = img.Width;
             _sourceHeight = img.Height;
             _sourceRgba = new byte[img.Width * img.Height * 4];
             img.CopyPixelDataTo(_sourceRgba);
-
-            // 将半透明像素与白色背景合成，确保所有源像素完全不透明（alpha=255）。
-            // 这样 RGB 值代表实际可见颜色，渲染与导出结果一致。
-            for (int i = 0; i < _sourceRgba.Length; i += 4)
-            {
-                byte a = _sourceRgba[i + 3];
-                if (a == 255) continue;
-                double af = a / 255.0;
-                _sourceRgba[i] = (byte)(_sourceRgba[i] * af + 255 * (1 - af));
-                _sourceRgba[i + 1] = (byte)(_sourceRgba[i + 1] * af + 255 * (1 - af));
-                _sourceRgba[i + 2] = (byte)(_sourceRgba[i + 2] * af + 255 * (1 - af));
-                _sourceRgba[i + 3] = 255;
-            }
 
             // 新图片默认框选全部
             Selection = new Rect(0, 0, 1, 1);
@@ -1259,7 +1247,7 @@ public partial class MainWindowViewModel : ObservableObject
         // 顶部统计信息
         var header = new TextBlock
         {
-            Text = $"拼豆总数: {totalCount}    使用颜色: {colorCount}",
+            Text = $"拼豆总数: {totalCount}      颜色总数: {colorCount}",
             FontSize = 14,
             FontWeight = FontWeight.SemiBold,
             Margin = new Thickness(0, 0, 0, 12)
@@ -1272,7 +1260,7 @@ public partial class MainWindowViewModel : ObservableObject
             var row = new Grid
             {
                 ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"),
-                Margin = new Thickness(0, 2)
+                Margin = new Thickness(0, 2, 12, 2)
             };
 
             var colorBlock = new Border
@@ -1323,26 +1311,16 @@ public partial class MainWindowViewModel : ObservableObject
 
         var dialog = new Window();
 
-        var closeBtn = new Button
-        {
-            Content = "关闭",
-            Padding = new Thickness(24, 6),
-            HorizontalAlignment = HorizontalAlignment.Center
-        };
-        closeBtn.Click += (_, _) => dialog.Close();
-
-        // 主布局：顶部统计(自动) + 中间滚动列表(占满剩余) + 底部关闭按钮(自动)
+        // 主布局：顶部统计(自动) + 中间滚动列表(占满剩余)
         var mainGrid = new Grid
         {
-            RowDefinitions = new RowDefinitions("Auto,*,Auto"),
-            Margin = new Thickness(20)
+            RowDefinitions = new RowDefinitions("Auto,*"),
+            Margin = new Thickness(10)
         };
         Grid.SetRow(header, 0);
         Grid.SetRow(scrollViewer, 1);
-        Grid.SetRow(closeBtn, 2);
         mainGrid.Children.Add(header);
         mainGrid.Children.Add(scrollViewer);
-        mainGrid.Children.Add(closeBtn);
 
         dialog.Title = "拼豆统计详情";
         dialog.Width = 360;

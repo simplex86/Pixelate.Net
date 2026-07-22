@@ -4,7 +4,7 @@
         xmlns:controls="using:Pixelate.Net.Avalonia.Controls"
         x:Class="Pixelate.Net.Avalonia.MainWindow"
         x:DataType="vm:MainWindowViewModel"
-        Title="拼豆像素画生成器 v0.8.45"
+        Title="拼豆像素画生成器 v0.9.46"
         Width="1280" Height="1080"
         MinWidth="1080" MinHeight="1040"
         WindowStartupLocation="CenterScreen"
@@ -14,14 +14,14 @@
         <KeyBinding Gesture="Ctrl+Z" Command="{Binding UndoCommand}" />
     </Window.KeyBindings>
 
-    <Grid RowDefinitions="*,Auto" Margin="12">
+    <Grid RowDefinitions="*,Auto" Margin="3">
 
         <!-- 主区域：左 | 右 -->
-        <Grid Grid.Row="0" ColumnDefinitions="280,8,*" Margin="0,0,0,8">
+        <Grid Grid.Row="0" ColumnDefinitions="320,4,*" Margin="0,0,0,4">
 
             <!-- 左列：正常视图 / 像素编辑面板 -->
             <Grid Grid.Column="0">
-              <Grid RowDefinitions="320,8,*" IsVisible="{Binding IsNormalView}">
+              <Grid RowDefinitions="320,4,*" IsVisible="{Binding IsNormalView}">
 
                 <!-- 上：选择图片按钮 + 原图 + 编辑按钮 -->
                 <Grid Grid.Row="0" RowDefinitions="Auto,*,Auto">
@@ -32,7 +32,7 @@
                             HorizontalAlignment="Stretch"
                             HorizontalContentAlignment="Center"
                             Padding="16,6"
-                            Margin="0,0,0,8">
+                            Margin="0,0,0,4">
                         <Button.Resources>
                             <SolidColorBrush x:Key="ButtonBackground" Color="#2196F3" />
                             <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#42A5F5" />
@@ -55,7 +55,7 @@
                     </Border>
 
                     <!-- 编辑/取消/应用按钮 -->
-                    <Grid Grid.Row="2" Margin="0,8,0,0">
+                    <Grid Grid.Row="2" Margin="0,4,0,0">
                         <Button Content="编辑"
                                 Command="{Binding EditCommand}"
                                 IsVisible="{Binding !IsEditing}"
@@ -107,13 +107,13 @@
                     <TextBlock Grid.Row="0"
                                Text="参数设置"
                                FontWeight="SemiBold"
-                               Margin="0,0,0,6" />
+                               Margin="0,0,0,4" />
                     <Border Grid.Row="1"
                             Background="#FAFAFA"
                             BorderBrush="#D0D0D0"
                             BorderThickness="1"
                             CornerRadius="4"
-                            Padding="14"
+                            Padding="4"
                             IsEnabled="{Binding !IsEditing}">
                         <Grid RowDefinitions="*,Auto">
                             <StackPanel Grid.Row="0" VerticalAlignment="Top">
@@ -133,7 +133,7 @@
                                 <ComboBox ItemsSource="{Binding BoardSizes}"
                                           SelectedItem="{Binding SelectedBoardSize}"
                                           HorizontalAlignment="Stretch"
-                                          Margin="0,0,0,8">
+                                          Margin="0,0,0,4">
                                     <ComboBox.ItemTemplate>
                                         <DataTemplate x:DataType="vm:BoardSizeOption">
                                             <TextBlock Text="{Binding DisplayName}" />
@@ -142,13 +142,13 @@
                                 </ComboBox>
                                 <CheckBox Content="多板拼接"
                                           IsChecked="{Binding UseMultiBoard}"
-                                          Margin="0,0,0,14" />
+                                          Margin="0,0,0,8" />
 
                                 <TextBlock Text="分割数量" Margin="0,0,0,4" />
                                 <ComboBox ItemsSource="{Binding AvailableSplitSizes}"
                                           SelectedItem="{Binding SelectedSplitSize}"
                                           HorizontalAlignment="Stretch"
-                                          Margin="0,0,0,6">
+                                          Margin="0,0,0,4">
                                     <ComboBox.ItemTemplate>
                                         <DataTemplate x:DataType="vm:SplitSizeOption">
                                             <TextBlock Text="{Binding DisplayName}" />
@@ -521,7 +521,7 @@
                         <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="Transparent" />
                     </Button.Resources>
                     <Image Source="avares://Pixelate.Net-Avalonia/Res/github.png"
-                           Width="21" Height="21" />
+                           Width="24" Height="24" />
                 </Button>
             </Grid>
         </Border>
