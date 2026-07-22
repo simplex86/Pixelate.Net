@@ -4,7 +4,7 @@
         xmlns:controls="using:Pixelate.Net.Avalonia.Controls"
         x:Class="Pixelate.Net.Avalonia.MainWindow"
         x:DataType="vm:MainWindowViewModel"
-        Title="拼豆像素画生成器 v0.9.51"
+        Title="拼豆像素画生成器 v0.9.53"
         Width="1280" Height="960"
         MinWidth="1080" MinHeight="960"
         WindowStartupLocation="CenterScreen"
@@ -322,65 +322,91 @@
                       </ListBox>
                   </Border>
 
-                  <!-- 批量修改：将所有 XXX 替换为 YYY（撑满面板，带边框统一风格） -->
-                  <Border Grid.Row="2"
-                          Background="#FAFAFA"
-                          BorderBrush="#D0D0D0"
-                          BorderThickness="1"
-                          CornerRadius="4"
-                          Padding="6"
-                          IsVisible="{Binding IsBatchEdit}"
-                          Margin="0,8,0,0">
-                      <Grid ColumnDefinitions="Auto,*,Auto,*" VerticalAlignment="Center">
-                          <TextBlock Grid.Column="0"
-                                     Text="将所有"
-                                     FontSize="13"
-                                     VerticalAlignment="Center"
-                                     Margin="0,0,6,0" />
-                          <Button Grid.Column="1"
-                                  Command="{Binding ShowSourceColorDialogCommand}"
-                                  Padding="8,4"
-                                  HorizontalAlignment="Stretch"
-                                  HorizontalContentAlignment="Left">
-                              <StackPanel Orientation="Horizontal" Spacing="6">
-                                  <Border Width="18" Height="18"
-                                          Background="{Binding BatchEditSourceColor.Brush}"
-                                          BorderBrush="#C0C0C0"
-                                          BorderThickness="1"
-                                          CornerRadius="2" />
-                                  <TextBlock Text="{Binding BatchEditSourceColor.DisplayName}"
-                                             FontSize="12"
-                                             VerticalAlignment="Center"
-                                             TextTrimming="CharacterEllipsis" />
-                              </StackPanel>
-                          </Button>
-                          <TextBlock Grid.Column="2"
-                                     Text="替换为"
-                                     FontSize="13"
-                                     VerticalAlignment="Center"
-                                     Margin="6,0,6,0" />
-                          <Button Grid.Column="3"
-                                  Command="{Binding ShowTargetColorDialogCommand}"
-                                  Padding="8,4"
-                                  HorizontalAlignment="Stretch"
-                                  HorizontalContentAlignment="Left">
-                              <StackPanel Orientation="Horizontal" Spacing="6">
-                                  <Border Width="18" Height="18"
-                                          Background="{Binding BatchEditTargetColor.Brush}"
-                                          BorderBrush="#C0C0C0"
-                                          BorderThickness="1"
-                                          CornerRadius="2" />
-                                  <TextBlock Text="{Binding BatchEditTargetColor.DisplayName}"
-                                             FontSize="12"
-                                             VerticalAlignment="Center"
-                                             TextTrimming="CharacterEllipsis" />
-                              </StackPanel>
-                          </Button>
-                      </Grid>
-                  </Border>
+                  <!-- 批量修改：被替换颜色列表 + 目标颜色列表 -->
+                  <Grid Grid.Row="2"
+                        RowDefinitions="Auto,*,Auto,*"
+                        IsVisible="{Binding IsBatchEdit}"
+                        Margin="0,8,0,0">
+                      <TextBlock Grid.Row="0"
+                                 Text="选择被替换的颜色"
+                                 FontSize="13"
+                                 Margin="0,0,0,4" />
+                      <Border Grid.Row="1"
+                              Background="#FAFAFA"
+                              BorderBrush="#D0D0D0"
+                              BorderThickness="1"
+                              CornerRadius="4"
+                              Padding="4"
+                              MinHeight="80">
+                          <ListBox ItemsSource="{Binding BatchEditSourceColors}"
+                                   SelectedItem="{Binding BatchEditSourceColor, Mode=TwoWay}"
+                                   Background="Transparent"
+                                   BorderThickness="0">
+                              <ListBox.ItemTemplate>
+                                  <DataTemplate x:DataType="vm:PaletteColorItem">
+                                      <StackPanel Orientation="Horizontal" Spacing="6" Margin="2">
+                                          <Border Width="18" Height="18"
+                                                  Background="{Binding Brush}"
+                                                  BorderBrush="#C0C0C0"
+                                                  BorderThickness="1"
+                                                  CornerRadius="2" />
+                                          <TextBlock Text="{Binding DisplayName}"
+                                                     FontSize="12"
+                                                     TextTrimming="CharacterEllipsis"
+                                                     VerticalAlignment="Center" />
+                                      </StackPanel>
+                                  </DataTemplate>
+                              </ListBox.ItemTemplate>
+                              <ListBox.Styles>
+                                  <Style Selector="ListBoxItem">
+                                      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                      <Setter Property="Padding" Value="4,2" />
+                                  </Style>
+                              </ListBox.Styles>
+                          </ListBox>
+                      </Border>
+
+                      <TextBlock Grid.Row="2"
+                                 Text="选择新颜色"
+                                 FontSize="13"
+                                 Margin="0,8,0,4" />
+                      <Border Grid.Row="3"
+                              Background="#FAFAFA"
+                              BorderBrush="#D0D0D0"
+                              BorderThickness="1"
+                              CornerRadius="4"
+                              Padding="4">
+                          <ListBox ItemsSource="{Binding BatchEditTargetColors}"
+                                   SelectedItem="{Binding BatchEditTargetColor, Mode=TwoWay}"
+                                   Background="Transparent"
+                                   BorderThickness="0">
+                              <ListBox.ItemTemplate>
+                                  <DataTemplate x:DataType="vm:PaletteColorItem">
+                                      <StackPanel Orientation="Horizontal" Spacing="6" Margin="2">
+                                          <Border Width="18" Height="18"
+                                                  Background="{Binding Brush}"
+                                                  BorderBrush="#C0C0C0"
+                                                  BorderThickness="1"
+                                                  CornerRadius="2" />
+                                          <TextBlock Text="{Binding DisplayName}"
+                                                     FontSize="12"
+                                                     TextTrimming="CharacterEllipsis"
+                                                     VerticalAlignment="Center" />
+                                      </StackPanel>
+                                  </DataTemplate>
+                              </ListBox.ItemTemplate>
+                              <ListBox.Styles>
+                                  <Style Selector="ListBoxItem">
+                                      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                      <Setter Property="Padding" Value="4,2" />
+                                  </Style>
+                              </ListBox.Styles>
+                          </ListBox>
+                      </Border>
+                  </Grid>
 
                   <!-- 底部：替换 / 取消 / 应用 -->
-				  <Grid Grid.Row="3" ColumnDefinitions="Auto,*,Auto" Margin="0,8,0,0">
+				  <Grid Grid.Row="3" ColumnDefinitions="Auto,*,Auto" Margin="0,6,0,0">
 					  <Button Grid.Column="0"
                               Content="替换"
                               Command="{Binding ReplaceColorsCommand}"
@@ -398,7 +424,7 @@
                                   Orientation="Horizontal"
                                   Spacing="8"
                                   HorizontalAlignment="Right"
-                                  Margin="0,8,0,0">
+                                  Margin="0,0,0,0">
                           <Button Content="取消"
                                   Command="{Binding CancelEditPixelsCommand}"
                                   Padding="24,6">
@@ -495,7 +521,7 @@
                                                  IsVisible="{Binding ShowCount}"
                                                  FontSize="12"
                                                  VerticalAlignment="Center"
-                                                 Margin="8,0,0,0" />
+                                                 Margin="8,0,3,0" />
                                   </Grid>
                               </DataTemplate>
                           </ListBox.ItemTemplate>
@@ -509,7 +535,7 @@
                   </Border>
 
                   <!-- 底部：删除 + 取消/应用 -->
-                  <Grid Grid.Row="3" ColumnDefinitions="Auto,*,Auto" Margin="0,8,0,0">
+                  <Grid Grid.Row="3" ColumnDefinitions="Auto,*,Auto" Margin="0,6,0,0">
                       <Button Grid.Column="0"
                               Content="删除"
                               Command="{Binding DeleteColorCommand}"

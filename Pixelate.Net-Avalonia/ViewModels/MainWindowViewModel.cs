@@ -154,23 +154,6 @@ public sealed class DeleteColorItem
     }
 }
 
-/// <summary>
-/// 颜色选择对话框（A/B）的列表项。
-/// </summary>
-public sealed class ColorPickerItem
-{
-    public BeadColor Color { get; }
-    public string DisplayName { get; }
-    public string? CountText { get; }
-
-    public ColorPickerItem(BeadColor color, int? count)
-    {
-        Color = color;
-        DisplayName = color.Code == color.Name ? color.Code : $"{color.Code} {color.Name}";
-        CountText = count?.ToString();
-    }
-}
-
 public partial class MainWindowViewModel : ObservableObject
 {
     public ProcessModeOption[] Modes { get; } =
@@ -249,22 +232,16 @@ public partial class MainWindowViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(ExportCommand))]
     [NotifyCanExecuteChangedFor(nameof(PrintCommand))]
     [NotifyCanExecuteChangedFor(nameof(ShowDetailsCommand))]
-    [NotifyCanExecuteChangedFor(nameof(ShowSourceColorDialogCommand))]
-    [NotifyCanExecuteChangedFor(nameof(ShowTargetColorDialogCommand))]
     [NotifyCanExecuteChangedFor(nameof(ReplaceColorsCommand))]
     private bool _isPixelEditing;
 
     /// <summary>编辑模式：逐点修改（默认按下）。</summary>
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(ShowSourceColorDialogCommand))]
-    [NotifyCanExecuteChangedFor(nameof(ShowTargetColorDialogCommand))]
     [NotifyCanExecuteChangedFor(nameof(ReplaceColorsCommand))]
     private bool _isPerPixelEdit = true;
 
     /// <summary>编辑模式：批量修改。</summary>
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(ShowSourceColorDialogCommand))]
-    [NotifyCanExecuteChangedFor(nameof(ShowTargetColorDialogCommand))]
     [NotifyCanExecuteChangedFor(nameof(ReplaceColorsCommand))]
     private bool _isBatchEdit;
 
@@ -280,6 +257,8 @@ public partial class MainWindowViewModel : ObservableObject
 
     [ObservableProperty] private IReadOnlyList<PaletteColorItem> _editColors = Array.Empty<PaletteColorItem>();
     [ObservableProperty] private PaletteColorItem? _selectedEditColor;
+    [ObservableProperty] private IReadOnlyList<PaletteColorItem> _batchEditSourceColors = Array.Empty<PaletteColorItem>();
+    [ObservableProperty] private IReadOnlyList<PaletteColorItem> _batchEditTargetColors = Array.Empty<PaletteColorItem>();
     [ObservableProperty] private bool _showCodes = true;
     [ObservableProperty] private bool _isEyedropping;
     [ObservableProperty] private IReadOnlyDictionary<uint, string>? _colorCodeMap;
@@ -378,8 +357,8 @@ public partial class MainWindowViewModel : ObservableObject
             IsPerPixelEdit = false;
         if (!value && !_isPerPixelEdit)
             IsBatchEdit = true;
-        // 切换到批量修改时退出取色状态
-        if (value && _isEyedropping)
+        // 离开批量修改时退出取色状态
+        if (!value && _isEyedropping)
             IsEyedropping = false;
     }
 
@@ -411,6 +390,13 @@ public partial class MainWindowViewModel : ObservableObject
     partial void OnSelectedEditColorChanged(PaletteColorItem? value)
     {
         IsEyedropping = IsPixelEditing && IsPerPixelEdit && value?.IsEyedropper == true;
+    }
+
+    /// <summary>批量编辑被替换颜色变化时：选中"取色"项则进入取色状态（仅批量修改模式）。</summary>
+    partial void OnBatchEditSourceColorChanged(PaletteColorItem? value)
+    {
+        IsEyedropping = IsPixelEditing && IsBatchEdit && value?.IsEyedropper == true;
+        ReplaceColorsCommand.NotifyCanExecuteChanged();
     }
 
     /// <summary>选中删除颜色变化时：选中"取色"项则进入取色状态。</summary>
@@ -566,12 +552,6 @@ public partial class MainWindowViewModel : ObservableObject
     /// <summary>是否可替换颜色：处于批量编辑模式且已选择被替换颜色和目标颜色。</summary>
     public bool CanReplaceColors => IsPixelEditing && IsBatchEdit && BatchEditSourceColor is not null && BatchEditTargetColor is not null;
 
-    /// <summary>是否可打开被替换颜色对话框：处于批量编辑模式。</summary>
-    public bool CanShowSourceColorDialog => IsPixelEditing && IsBatchEdit;
-
-    /// <summary>是否可打开目标颜色对话框：处于批量编辑模式。</summary>
-    public bool CanShowTargetColorDialog => IsPixelEditing && IsBatchEdit;
-
     /// <summary>是否可撤销：处于编辑或删除模式且 undo 栈非空。</summary>
     public bool CanUndo => (IsPixelEditing || IsPixelDeleting) && _undoStack.Count > 0;
 
@@ -691,29 +671,34 @@ public partial class MainWindowViewModel : ObservableObject
 
         var brand = _selectedBrand?.Value ?? BeadBrand.None;
         var colors = BeadPalettes.Get(brand);
-        var items = new List<PaletteColorItem>(colors.Count + 1);
         _colorToItemMap = new Dictionary<uint, PaletteColorItem>(colors.Count);
 
-        // 第一行：取色项
-        items.Add(PaletteColorItem.CreateEyedropper());
-
+        // 构建色卡颜色列表（不含取色项），同一实例共享于 EditColors / BatchEditTargetColors / _colorToItemMap
+        var paletteItems = new List<PaletteColorItem>(colors.Count);
         foreach (var c in colors)
         {
             var item = new PaletteColorItem(c);
-            items.Add(item);
+            paletteItems.Add(item);
             uint key = ((uint)c.R << 16) | ((uint)c.G << 8) | c.B;
             _colorToItemMap[key] = item;
         }
 
-        EditColors = items;
+        // EditColors：色卡颜色 + 取色项（用于逐点修改模式）
+        var editItems = new List<PaletteColorItem>(paletteItems.Count + 1) { PaletteColorItem.CreateEyedropper() };
+        editItems.AddRange(paletteItems);
+        EditColors = editItems;
         // 默认选中第一个实际颜色（跳过取色项）
-        SelectedEditColor = items.Count > 1 ? items[1] : null;
+        SelectedEditColor = editItems.Count > 1 ? editItems[1] : null;
+
+        // BatchEditTargetColors：色卡颜色（不含取色项，用于批量修改目标颜色）
+        BatchEditTargetColors = paletteItems;
+        BatchEditTargetColor = paletteItems.Count > 0 ? paletteItems[0] : null;
 
         // 初始化批量编辑状态
         IsPerPixelEdit = true;
         IsBatchEdit = false;
-        BatchEditSourceColor = GetMostFrequentPixelColor();
-        BatchEditTargetColor = items.Count > 1 ? items[1] : null;
+        BatchEditSourceColor = null;
+        RefreshBatchEditSourceColors();
 
         IsPixelEditing = true;
         UndoCommand.NotifyCanExecuteChanged();
@@ -731,6 +716,8 @@ public partial class MainWindowViewModel : ObservableObject
         IsEyedropping = false;
         EditColors = Array.Empty<PaletteColorItem>();
         SelectedEditColor = null;
+        BatchEditSourceColors = Array.Empty<PaletteColorItem>();
+        BatchEditTargetColors = Array.Empty<PaletteColorItem>();
         BatchEditSourceColor = null;
         BatchEditTargetColor = null;
         IsPerPixelEdit = true;
@@ -749,6 +736,8 @@ public partial class MainWindowViewModel : ObservableObject
         IsEyedropping = false;
         EditColors = Array.Empty<PaletteColorItem>();
         SelectedEditColor = null;
+        BatchEditSourceColors = Array.Empty<PaletteColorItem>();
+        BatchEditTargetColors = Array.Empty<PaletteColorItem>();
         BatchEditSourceColor = null;
         BatchEditTargetColor = null;
         IsPerPixelEdit = true;
@@ -1004,6 +993,71 @@ public partial class MainWindowViewModel : ObservableObject
         SelectedDeleteColor = newSelection;
     }
 
+    /// <summary>
+    /// 重新计算批量编辑的被替换颜色列表。
+    /// 列表第一行为"取色"项，后续为像素画中出现的色卡颜色（按数量降序）。
+    /// 保留当前选择（取色项或已选颜色），否则默认选中数量最多的颜色。
+    /// </summary>
+    private void RefreshBatchEditSourceColors()
+    {
+        if (PixelatedData is null || _colorToItemMap.Count == 0)
+        {
+            BatchEditSourceColors = Array.Empty<PaletteColorItem>();
+            return;
+        }
+
+        // 统计像素画中每种色卡颜色的数量
+        var counts = new Dictionary<uint, int>();
+        var data = PixelatedData;
+        int total = PixelatedWidth * PixelatedHeight;
+        for (int i = 0; i < total; i++)
+        {
+            int idx = i * 4;
+            if (data[idx + 3] == 0) continue;
+            uint key = ((uint)data[idx] << 16) | ((uint)data[idx + 1] << 8) | data[idx + 2];
+            if (_colorToItemMap.ContainsKey(key))
+                counts[key] = counts.TryGetValue(key, out var c) ? c + 1 : 1;
+        }
+
+        // 构建列表：取色项 + 像素画颜色（按数量降序）
+        var eyedropper = PaletteColorItem.CreateEyedropper();
+        var colorCounts = new List<(uint key, int count)>(counts.Count);
+        foreach (var (key, count) in counts)
+            colorCounts.Add((key, count));
+        colorCounts.Sort((a, b) => b.count.CompareTo(a.count));
+
+        var items = new List<PaletteColorItem>(colorCounts.Count + 1) { eyedropper };
+        foreach (var (key, _) in colorCounts)
+        {
+            if (_colorToItemMap.TryGetValue(key, out var item))
+                items.Add(item);
+        }
+
+        // 保留当前选择（取色项或已选颜色仍在像素画中）
+        PaletteColorItem? newSelection = null;
+        if (BatchEditSourceColor is not null)
+        {
+            if (BatchEditSourceColor.IsEyedropper)
+            {
+                newSelection = eyedropper;
+            }
+            else
+            {
+                uint selKey = ((uint)BatchEditSourceColor.BeadColor.R << 16) |
+                              ((uint)BatchEditSourceColor.BeadColor.G << 8) |
+                              BatchEditSourceColor.BeadColor.B;
+                if (counts.ContainsKey(selKey))
+                    newSelection = BatchEditSourceColor;
+            }
+        }
+        // 默认选中数量最多的颜色
+        if (newSelection is null && items.Count > 1)
+            newSelection = items[1];
+
+        BatchEditSourceColors = items;
+        BatchEditSourceColor = newSelection;
+    }
+
     /// <summary>撤销最近一次像素修改。</summary>
     [RelayCommand(CanExecute = nameof(CanUndo))]
     private void Undo()
@@ -1028,10 +1082,10 @@ public partial class MainWindowViewModel : ObservableObject
             RefreshBeadCount();
         }
 
-        // 批量编辑模式下刷新被替换颜色（可能恢复已替换的颜色）
+        // 批量编辑模式下刷新被替换颜色列表（可能恢复已替换的颜色）
         if (IsPixelEditing && IsBatchEdit)
         {
-            BatchEditSourceColor = GetMostFrequentPixelColor();
+            RefreshBatchEditSourceColors();
         }
 
         if (_undoStack.Count == 0)
@@ -1049,105 +1103,6 @@ public partial class MainWindowViewModel : ObservableObject
             if (PixelatedData[i * 4 + 3] != 0) count++;
         }
         BeadCount = $"拼豆总数: {count}";
-    }
-
-    /// <summary>获取当前像素画中出现次数最多的色卡颜色。</summary>
-    private PaletteColorItem? GetMostFrequentPixelColor()
-    {
-        if (PixelatedData is null || _colorToItemMap.Count == 0) return null;
-
-        var counts = new Dictionary<uint, int>();
-        var data = PixelatedData;
-        int total = PixelatedWidth * PixelatedHeight;
-        for (int i = 0; i < total; i++)
-        {
-            int idx = i * 4;
-            if (data[idx + 3] == 0) continue;
-            uint key = ((uint)data[idx] << 16) | ((uint)data[idx + 1] << 8) | data[idx + 2];
-            if (_colorToItemMap.ContainsKey(key))
-                counts[key] = counts.TryGetValue(key, out var c) ? c + 1 : 1;
-        }
-
-        uint bestKey = 0;
-        int bestCount = -1;
-        foreach (var (key, count) in counts)
-        {
-            if (count > bestCount)
-            {
-                bestCount = count;
-                bestKey = key;
-            }
-        }
-
-        return _colorToItemMap.TryGetValue(bestKey, out var item) ? item : null;
-    }
-
-    /// <summary>获取当前像素画中所有色卡颜色及数量，按数量降序排列。</summary>
-    private List<(BeadColor color, int? count)> GetPixelArtColorsWithCounts()
-    {
-        var result = new List<(BeadColor, int?)>();
-        if (PixelatedData is null || _selectedBrand is null) return result;
-
-        var brand = _selectedBrand.Value;
-        var palette = BeadPalettes.Get(brand);
-        var paletteMap = new Dictionary<uint, BeadColor>(palette.Count);
-        foreach (var c in palette)
-            paletteMap[((uint)c.R << 16) | ((uint)c.G << 8) | c.B] = c;
-
-        var counts = new Dictionary<uint, int>();
-        var data = PixelatedData;
-        int total = PixelatedWidth * PixelatedHeight;
-        for (int i = 0; i < total; i++)
-        {
-            int idx = i * 4;
-            if (data[idx + 3] == 0) continue;
-            uint key = ((uint)data[idx] << 16) | ((uint)data[idx + 1] << 8) | data[idx + 2];
-            counts[key] = counts.TryGetValue(key, out var c) ? c + 1 : 1;
-        }
-
-        foreach (var (key, count) in counts)
-        {
-            if (paletteMap.TryGetValue(key, out var beadColor))
-                result.Add((beadColor, count));
-        }
-
-        result.Sort((a, b) => b.Item2.GetValueOrDefault().CompareTo(a.Item2.GetValueOrDefault()));
-        return result;
-    }
-
-    /// <summary>打开"被替换颜色"对话框（对话框 A）：显示像素画中所有颜色及数量，单列。</summary>
-    [RelayCommand(CanExecute = nameof(CanShowSourceColorDialog))]
-    private async Task ShowSourceColorDialogAsync()
-    {
-        var items = GetPixelArtColorsWithCounts();
-        if (items.Count == 0) return;
-
-        var initial = BatchEditSourceColor?.BeadColor ?? items[0].color;
-        var selected = await ShowColorPickerDialogAsync("选择被替换颜色", items, initial, 1, true);
-        if (selected is { } beadColor && _colorToItemMap.TryGetValue(
-            ((uint)beadColor.R << 16) | ((uint)beadColor.G << 8) | beadColor.B, out var item))
-        {
-            BatchEditSourceColor = item;
-        }
-    }
-
-    /// <summary>打开"目标颜色"对话框（对话框 B）：显示色卡中所有颜色，多列。</summary>
-    [RelayCommand(CanExecute = nameof(CanShowTargetColorDialog))]
-    private async Task ShowTargetColorDialogAsync()
-    {
-        if (EditColors.Count == 0) return;
-
-        var items = new List<(BeadColor, int?)>(EditColors.Count);
-        foreach (var editItem in EditColors)
-            items.Add((editItem.BeadColor, null));
-
-        var initial = BatchEditTargetColor?.BeadColor ?? items[0].Item1;
-        var selected = await ShowColorPickerDialogAsync("选择目标颜色", items, initial, 3, false);
-        if (selected is { } beadColor && _colorToItemMap.TryGetValue(
-            ((uint)beadColor.R << 16) | ((uint)beadColor.G << 8) | beadColor.B, out var item))
-        {
-            BatchEditTargetColor = item;
-        }
     }
 
     /// <summary>批量替换：将所有被替换颜色的像素修改为目标颜色。先弹出确认框，用户确认后才执行。</summary>
@@ -1192,205 +1147,18 @@ public partial class MainWindowViewModel : ObservableObject
         _undoStack.Push(changes);
         PixelatedData = newData;
 
-        // 替换后更新被替换颜色为当前数量最多的颜色
-        BatchEditSourceColor = GetMostFrequentPixelColor();
+        // 替换后刷新被替换颜色列表（保留当前选择或默认选中数量最多的颜色）
+        RefreshBatchEditSourceColors();
 
         if (_undoStack.Count == 1)
             UndoCommand.NotifyCanExecuteChanged();
     }
 
     /// <summary>
-    /// 颜色选择对话框（对话框 A/B 共用）。
-    /// 显示颜色列表，单选，返回选中的颜色。
-    /// </summary>
-    /// <param name="title">对话框标题。</param>
-    /// <param name="items">颜色列表（颜色 + 可选数量）。</param>
-    /// <param name="initialSelection">初始选中颜色。</param>
-    /// <param name="columns">列数（1=单列，3=多列）。</param>
-    /// <param name="showCount">是否显示数量。</param>
-    private static async Task<BeadColor?> ShowColorPickerDialogAsync(
-        string title,
-        IReadOnlyList<(BeadColor color, int? count)> items,
-        BeadColor? initialSelection,
-        int columns,
-        bool showCount)
-    {
-        if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime desktop)
-            return null;
-        var owner = desktop.MainWindow;
-        if (owner is null) return null;
-
-        BeadColor? result = null;
-        Window? dialog = null;
-
-        // 构建列表项
-        var pickerItems = new List<ColorPickerItem>(items.Count);
-        int initialIndex = -1;
-        for (int i = 0; i < items.Count; i++)
-        {
-            var (color, count) = items[i];
-            pickerItems.Add(new ColorPickerItem(color, count));
-
-            if (initialSelection is { } init &&
-                init.R == color.R && init.G == color.G && init.B == color.B)
-            {
-                initialIndex = i;
-            }
-        }
-
-        // 构建 ListBox
-        var listBox = new ListBox
-        {
-            Background = Brushes.Transparent,
-            BorderThickness = new Thickness(0),
-            SelectionMode = SelectionMode.Single,
-            ItemsSource = pickerItems
-        };
-
-        if (columns > 1)
-        {
-            listBox.ItemsPanel = new FuncTemplate<Panel?>(() => new UniformGrid { Columns = columns });
-        }
-
-        listBox.ItemTemplate = new FuncDataTemplate<ColorPickerItem>((item, _) =>
-        {
-            var grid = new Grid
-            {
-                ColumnDefinitions = showCount
-                    ? new ColumnDefinitions("Auto,*,Auto")
-                    : new ColumnDefinitions("Auto,*"),
-                Margin = new Thickness(2)
-            };
-
-            var colorBlock = new Border
-            {
-                Width = 18,
-                Height = 18,
-                Background = new SolidColorBrush(global::Avalonia.Media.Color.FromRgb(item.Color.R, item.Color.G, item.Color.B)),
-                BorderBrush = new SolidColorBrush(global::Avalonia.Media.Color.FromRgb(0xC0, 0xC0, 0xC0)),
-                BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(2),
-                Margin = new Thickness(0, 0, 8, 0),
-                VerticalAlignment = VerticalAlignment.Center
-            };
-            Grid.SetColumn(colorBlock, 0);
-
-            var nameText = new TextBlock
-            {
-                Text = item.DisplayName,
-                FontSize = 12,
-                VerticalAlignment = VerticalAlignment.Center,
-                TextTrimming = TextTrimming.CharacterEllipsis
-            };
-            Grid.SetColumn(nameText, 1);
-
-            grid.Children.Add(colorBlock);
-            grid.Children.Add(nameText);
-
-            if (showCount && item.CountText is not null)
-            {
-                var countText = new TextBlock
-                {
-                    Text = item.CountText,
-                    FontSize = 12,
-                    VerticalAlignment = VerticalAlignment.Center,
-                    HorizontalAlignment = HorizontalAlignment.Right,
-                    Margin = new Thickness(12, 0, 0, 0)
-                };
-                Grid.SetColumn(countText, 2);
-                grid.Children.Add(countText);
-            }
-
-            return grid;
-        });
-
-        if (initialIndex >= 0)
-            listBox.SelectedIndex = initialIndex;
-
-        // 确定按钮
-        var okBtn = new Button
-        {
-            Content = "确定",
-            Padding = new Thickness(24, 6)
-        };
-        okBtn.Resources["ButtonBackground"] = new SolidColorBrush(global::Avalonia.Media.Color.FromRgb(0x4C, 0xAF, 0x50));
-        okBtn.Resources["ButtonBackgroundPointerOver"] = new SolidColorBrush(global::Avalonia.Media.Color.FromRgb(0x5D, 0xBD, 0x5D));
-        okBtn.Resources["ButtonBackgroundPressed"] = new SolidColorBrush(global::Avalonia.Media.Color.FromRgb(0x3D, 0x91, 0x40));
-        okBtn.Resources["ButtonForeground"] = Brushes.White;
-        okBtn.Resources["ButtonForegroundPointerOver"] = Brushes.White;
-        okBtn.Click += (_, _) =>
-        {
-            if (listBox.SelectedIndex >= 0 && listBox.SelectedIndex < pickerItems.Count)
-                result = pickerItems[listBox.SelectedIndex].Color;
-            dialog?.Close();
-        };
-
-        // 取消按钮
-        var cancelBtn = new Button
-        {
-            Content = "取消",
-            Padding = new Thickness(24, 6)
-        };
-        cancelBtn.Click += (_, _) => { result = null; dialog?.Close(); };
-
-        // 布局
-        var scrollViewer = new ScrollViewer
-        {
-            Content = listBox,
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-            Margin = new Thickness(0, 0, 0, 12)
-        };
-
-        var buttonPanel = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            HorizontalAlignment = HorizontalAlignment.Right,
-            Spacing = 12
-        };
-        buttonPanel.Children.Add(cancelBtn);
-        buttonPanel.Children.Add(okBtn);
-
-        var mainGrid = new Grid
-        {
-            RowDefinitions = new RowDefinitions("*,Auto"),
-            Margin = new Thickness(10)
-        };
-        Grid.SetRow(scrollViewer, 0);
-        Grid.SetRow(buttonPanel, 1);
-        mainGrid.Children.Add(scrollViewer);
-        mainGrid.Children.Add(buttonPanel);
-
-        dialog = new Window
-        {
-            Title = title,
-            Width = columns > 1 ? 480 : 360,
-            Height = 520,
-            CanResize = false,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            Content = mainGrid
-        };
-
-        // 隐藏最小化和最大化按钮
-        dialog.Opened += (_, _) =>
-        {
-            if (!OperatingSystem.IsWindows()) return;
-            var handle = dialog.TryGetPlatformHandle();
-            if (handle is null) return;
-            int style = GetWindowLong(handle.Handle, GWL_STYLE);
-            style &= ~WS_MINIMIZEBOX;
-            style &= ~WS_MAXIMIZEBOX;
-            SetWindowLong(handle.Handle, GWL_STYLE, style);
-        };
-
-        await dialog.ShowDialog(owner);
-        return result;
-    }
-
-    /// <summary>
     /// 处理像素点击：
     /// - 编辑模式 + 逐点修改：将点击的像素修改为选中的色卡颜色
     /// - 编辑模式 + 逐点修改 + 取色状态：拾取点击像素的颜色并在列表中选中
+    /// - 编辑模式 + 批量修改 + 取色状态：拾取点击像素的颜色作为被替换颜色
     /// - 删除模式 + 逐点删除：将点击的像素设为透明（删除）
     /// - 删除模式 + 批量删除 + 取色状态：拾取点击像素的颜色并在列表中选中
     /// </summary>
@@ -1427,6 +1195,20 @@ public partial class MainWindowViewModel : ObservableObject
             {
                 // 选中被取的颜色，OnSelectedEditColorChanged 会将 IsEyedropping 设为 false
                 SelectedEditColor = item;
+            }
+            return;
+        }
+
+        // 编辑模式 + 批量修改 + 取色状态：拾取被替换颜色
+        if (IsPixelEditing && IsBatchEdit && IsEyedropping)
+        {
+            // 跳过已删除的像素（alpha=0）
+            if (data[index + 3] == 0) return;
+            uint key = ((uint)data[index] << 16) | ((uint)data[index + 1] << 8) | data[index + 2];
+            if (_colorToItemMap.TryGetValue(key, out var item))
+            {
+                // 选中被取的颜色，OnBatchEditSourceColorChanged 会将 IsEyedropping 设为 false
+                BatchEditSourceColor = item;
             }
             return;
         }
