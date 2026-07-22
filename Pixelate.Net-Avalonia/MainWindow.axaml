@@ -14,6 +14,34 @@
         <KeyBinding Gesture="Ctrl+Z" Command="{Binding UndoCommand}" />
     </Window.KeyBindings>
 
+    <Window.Styles>
+        <!-- 状态按钮：按下（选中）时蓝色背景白字，弹起（未选中）时浅灰背景深色字 -->
+        <Style Selector="ToggleButton.stateButton">
+            <Setter Property="Padding" Value="14,6" />
+            <Setter Property="MinWidth" Value="80" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="ToggleButton.stateButton:not(:checked)">
+            <Setter Property="Background" Value="#E0E0E0" />
+            <Setter Property="Foreground" Value="#333333" />
+            <Setter Property="BorderBrush" Value="#BDBDBD" />
+        </Style>
+        <Style Selector="ToggleButton.stateButton:not(:checked):pointerover">
+            <Setter Property="Background" Value="#D0D0D0" />
+        </Style>
+        <Style Selector="ToggleButton.stateButton:checked">
+            <Setter Property="Background" Value="#1976D2" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="BorderBrush" Value="#1565C0" />
+        </Style>
+        <Style Selector="ToggleButton.stateButton:checked:pointerover">
+            <Setter Property="Background" Value="#1E88E5" />
+        </Style>
+        <Style Selector="ToggleButton.stateButton:checked:pressed">
+            <Setter Property="Background" Value="#1565C0" />
+        </Style>
+    </Window.Styles>
+
     <Grid RowDefinitions="*,Auto" Margin="3">
 
         <!-- 主区域：左 | 右 -->
@@ -235,33 +263,36 @@
               </Grid>
 
               <!-- 像素编辑面板 -->
-              <Grid RowDefinitions="Auto,*,Auto" IsVisible="{Binding IsPixelEditing}">
-                  <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
-                      <TextBlock Grid.Column="0"
-                                 Text="{Binding SelectedBrand.DisplayName}"
-                                 FontWeight="SemiBold"
-                                 VerticalAlignment="Center" />
-                      <ToggleButton Grid.Column="1"
-                                    Content="取色"
-                                    Classes="accent"
-                                    IsChecked="{Binding IsEyedropping}"
-                                    Padding="14,6" />
-                  </Grid>
-                  <Border Grid.Row="1"
+              <Grid RowDefinitions="Auto,Auto,*,Auto" IsVisible="{Binding IsPixelEditing}">
+                  <!-- 顶部：当前色卡 -->
+                  <TextBlock Grid.Row="0"
+                             Text="{Binding SelectedBrand.DisplayName}"
+                             FontWeight="SemiBold"
+                             Margin="0,0,0,8"
+                             VerticalAlignment="Center" />
+
+                  <!-- 状态按钮：逐点修改 / 批量修改 -->
+                  <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+                      <ToggleButton Content="逐点修改"
+                                    Classes="stateButton"
+                                    IsChecked="{Binding IsPerPixelEdit, Mode=TwoWay}" />
+                      <ToggleButton Content="批量修改"
+                                    Classes="stateButton"
+                                    IsChecked="{Binding IsBatchEdit, Mode=TwoWay}" />
+                  </StackPanel>
+
+                  <!-- 逐点修改：色卡颜色列表（单列） -->
+                  <Border Grid.Row="2"
                           Background="#FAFAFA"
                           BorderBrush="#D0D0D0"
                           BorderThickness="1"
                           CornerRadius="4"
-                          Padding="6">
+                          Padding="6"
+                          IsVisible="{Binding IsPerPixelEdit}">
                       <ListBox ItemsSource="{Binding EditColors}"
                                SelectedItem="{Binding SelectedEditColor, Mode=TwoWay}"
                                Background="Transparent"
                                BorderThickness="0">
-                          <ListBox.ItemsPanel>
-                              <ItemsPanelTemplate>
-                                  <UniformGrid Columns="3" />
-                              </ItemsPanelTemplate>
-                          </ListBox.ItemsPanel>
                           <ListBox.ItemTemplate>
                               <DataTemplate x:DataType="vm:PaletteColorItem">
                                   <StackPanel Orientation="Horizontal" Spacing="6" Margin="2">
@@ -271,7 +302,7 @@
                                               BorderThickness="1"
                                               CornerRadius="2" />
                                       <TextBlock Text="{Binding DisplayName}"
-                                                 FontSize="11"
+                                                 FontSize="12"
                                                  TextTrimming="CharacterEllipsis"
                                                  VerticalAlignment="Center" />
                                   </StackPanel>
@@ -285,11 +316,61 @@
                           </ListBox.Styles>
                       </ListBox>
                   </Border>
+
+                  <!-- 批量修改：将所有 XXX 替换为 YYY -->
                   <StackPanel Grid.Row="2"
+                              IsVisible="{Binding IsBatchEdit}"
+                              VerticalAlignment="Top"
+                              Spacing="12"
+                              Margin="0,8,0,0">
+                      <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                          <TextBlock Text="将所有" FontSize="13" VerticalAlignment="Center" />
+                          <Button Command="{Binding ShowSourceColorDialogCommand}" Padding="8,4">
+                              <StackPanel Orientation="Horizontal" Spacing="6">
+                                  <Border Width="18" Height="18"
+                                          Background="{Binding BatchEditSourceColor.Brush}"
+                                          BorderBrush="#C0C0C0"
+                                          BorderThickness="1"
+                                          CornerRadius="2" />
+                                  <TextBlock Text="{Binding BatchEditSourceColor.DisplayName}"
+                                             FontSize="12"
+                                             VerticalAlignment="Center" />
+                              </StackPanel>
+                          </Button>
+                          <TextBlock Text="替换为" FontSize="13" VerticalAlignment="Center" />
+                          <Button Command="{Binding ShowTargetColorDialogCommand}" Padding="8,4">
+                              <StackPanel Orientation="Horizontal" Spacing="6">
+                                  <Border Width="18" Height="18"
+                                          Background="{Binding BatchEditTargetColor.Brush}"
+                                          BorderBrush="#C0C0C0"
+                                          BorderThickness="1"
+                                          CornerRadius="2" />
+                                  <TextBlock Text="{Binding BatchEditTargetColor.DisplayName}"
+                                             FontSize="12"
+                                             VerticalAlignment="Center" />
+                              </StackPanel>
+                          </Button>
+                      </StackPanel>
+                  </StackPanel>
+
+                  <!-- 底部：替换 / 取消 / 应用 -->
+                  <StackPanel Grid.Row="3"
                               Orientation="Horizontal"
                               Spacing="8"
                               HorizontalAlignment="Right"
                               Margin="0,8,0,0">
+                      <Button Content="替换"
+                              Command="{Binding ReplaceColorsCommand}"
+                              IsVisible="{Binding IsBatchEdit}"
+                              Padding="24,6">
+                          <Button.Resources>
+                              <SolidColorBrush x:Key="ButtonBackground" Color="#2196F3" />
+                              <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#42A5F5" />
+                              <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#1976D2" />
+                              <SolidColorBrush x:Key="ButtonForeground" Color="White" />
+                              <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="White" />
+                          </Button.Resources>
+                      </Button>
                       <Button Content="取消"
                               Command="{Binding CancelEditPixelsCommand}"
                               Padding="24,6">
@@ -316,27 +397,46 @@
               </Grid>
 
               <!-- 像素删除面板 -->
-              <Grid RowDefinitions="Auto,*,Auto" IsVisible="{Binding IsPixelDeleting}">
-                  <!-- 顶部：色卡模式 + 取色按钮 -->
-                  <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
-                      <TextBlock Grid.Column="0"
-                                 Text="{Binding SelectedBrand.DisplayName}"
-                                 FontWeight="SemiBold"
-                                 VerticalAlignment="Center" />
-                      <ToggleButton Grid.Column="1"
-                                    Content="取色"
-                                    Classes="accent"
-                                    IsChecked="{Binding IsEyedropping}"
-                                    Padding="14,6" />
-                  </Grid>
+              <Grid RowDefinitions="Auto,Auto,*,Auto" IsVisible="{Binding IsPixelDeleting}">
+                  <!-- 顶部：当前色卡 -->
+                  <TextBlock Grid.Row="0"
+                             Text="{Binding SelectedBrand.DisplayName}"
+                             FontWeight="SemiBold"
+                             Margin="0,0,0,8"
+                             VerticalAlignment="Center" />
 
-                  <!-- 颜色列表 -->
-                  <Border Grid.Row="1"
+                  <!-- 状态按钮：逐点删除 / 批量删除 -->
+                  <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+                      <ToggleButton Content="逐点删除"
+                                    Classes="stateButton"
+                                    IsChecked="{Binding IsPerPixelDelete, Mode=TwoWay}" />
+                      <ToggleButton Content="批量删除"
+                                    Classes="stateButton"
+                                    IsChecked="{Binding IsBatchDelete, Mode=TwoWay}" />
+                  </StackPanel>
+
+                  <!-- 逐点删除：提示文本 -->
+                  <Border Grid.Row="2"
                           Background="#FAFAFA"
                           BorderBrush="#D0D0D0"
                           BorderThickness="1"
                           CornerRadius="4"
-                          Padding="6">
+                          Padding="12"
+                          IsVisible="{Binding IsPerPixelDelete}">
+                      <TextBlock Text="点击右侧图像中的像素，即可将它删除"
+                                 FontSize="13"
+                                 VerticalAlignment="Center"
+                                 HorizontalAlignment="Center" />
+                  </Border>
+
+                  <!-- 批量删除：颜色列表（第一行为取色项） -->
+                  <Border Grid.Row="2"
+                          Background="#FAFAFA"
+                          BorderBrush="#D0D0D0"
+                          BorderThickness="1"
+                          CornerRadius="4"
+                          Padding="6"
+                          IsVisible="{Binding IsBatchDelete}">
                       <ListBox ItemsSource="{Binding DeleteColors}"
                                SelectedItem="{Binding SelectedDeleteColor, Mode=TwoWay}"
                                Background="Transparent"
@@ -357,6 +457,7 @@
                                                  VerticalAlignment="Center" />
                                       <TextBlock Grid.Column="2"
                                                  Text="{Binding Count}"
+                                                 IsVisible="{Binding ShowCount}"
                                                  FontSize="12"
                                                  VerticalAlignment="Center"
                                                  Margin="8,0,0,0" />
@@ -373,7 +474,7 @@
                   </Border>
 
                   <!-- 底部：删除 + 取消/应用 -->
-                  <Grid Grid.Row="2" ColumnDefinitions="Auto,*,Auto" Margin="0,8,0,0">
+                  <Grid Grid.Row="3" ColumnDefinitions="Auto,*,Auto" Margin="0,8,0,0">
                       <Button Grid.Column="0"
                               Content="删除"
                               Command="{Binding DeleteColorCommand}"
