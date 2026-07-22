@@ -4,9 +4,9 @@
         xmlns:controls="using:Pixelate.Net.Avalonia.Controls"
         x:Class="Pixelate.Net.Avalonia.MainWindow"
         x:DataType="vm:MainWindowViewModel"
-        Title="拼豆像素画生成器 v0.9.46"
-        Width="1280" Height="1080"
-        MinWidth="1080" MinHeight="1040"
+        Title="拼豆像素画生成器 v0.9.51"
+        Width="1280" Height="960"
+        MinWidth="1080" MinHeight="960"
         WindowStartupLocation="CenterScreen"
         Icon="avares://Pixelate.Net-Avalonia/Res/icon.ico">
 
@@ -15,29 +15,28 @@
     </Window.KeyBindings>
 
     <Window.Styles>
-        <!-- 状态按钮：按下（选中）时蓝色背景白字，弹起（未选中）时浅灰背景深色字 -->
-        <Style Selector="ToggleButton.stateButton">
+        <!-- 状态按钮（RadioButton 实现：同组互斥，已选中不会被点击取消）：按下（选中）时蓝色背景白字，弹起（未选中）时浅灰背景深色字 -->
+        <Style Selector="RadioButton.stateButton">
             <Setter Property="Padding" Value="14,6" />
-            <Setter Property="MinWidth" Value="80" />
             <Setter Property="HorizontalContentAlignment" Value="Center" />
         </Style>
-        <Style Selector="ToggleButton.stateButton:not(:checked)">
+        <Style Selector="RadioButton.stateButton:not(:checked)">
             <Setter Property="Background" Value="#E0E0E0" />
             <Setter Property="Foreground" Value="#333333" />
             <Setter Property="BorderBrush" Value="#BDBDBD" />
         </Style>
-        <Style Selector="ToggleButton.stateButton:not(:checked):pointerover">
+        <Style Selector="RadioButton.stateButton:not(:checked):pointerover">
             <Setter Property="Background" Value="#D0D0D0" />
         </Style>
-        <Style Selector="ToggleButton.stateButton:checked">
+        <Style Selector="RadioButton.stateButton:checked">
             <Setter Property="Background" Value="#1976D2" />
             <Setter Property="Foreground" Value="White" />
             <Setter Property="BorderBrush" Value="#1565C0" />
         </Style>
-        <Style Selector="ToggleButton.stateButton:checked:pointerover">
+        <Style Selector="RadioButton.stateButton:checked:pointerover">
             <Setter Property="Background" Value="#1E88E5" />
         </Style>
-        <Style Selector="ToggleButton.stateButton:checked:pressed">
+        <Style Selector="RadioButton.stateButton:checked:pressed">
             <Setter Property="Background" Value="#1565C0" />
         </Style>
     </Window.Styles>
@@ -271,15 +270,21 @@
                              Margin="0,0,0,8"
                              VerticalAlignment="Center" />
 
-                  <!-- 状态按钮：逐点修改 / 批量修改 -->
-                  <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
-                      <ToggleButton Content="逐点修改"
-                                    Classes="stateButton"
-                                    IsChecked="{Binding IsPerPixelEdit, Mode=TwoWay}" />
-                      <ToggleButton Content="批量修改"
-                                    Classes="stateButton"
-                                    IsChecked="{Binding IsBatchEdit, Mode=TwoWay}" />
-                  </StackPanel>
+                  <!-- 状态按钮：逐点修改 / 批量修改（同组互斥，撑满面板） -->
+                  <Grid Grid.Row="1" ColumnDefinitions="*,8,*" Margin="0,0,0,8">
+                      <RadioButton Grid.Column="0"
+                                   Content="逐点修改"
+                                   Classes="stateButton"
+                                   GroupName="EditMode"
+                                   IsChecked="{Binding IsPerPixelEdit, Mode=TwoWay}"
+                                   HorizontalAlignment="Stretch" />
+                      <RadioButton Grid.Column="2"
+                                   Content="批量修改"
+                                   Classes="stateButton"
+                                   GroupName="EditMode"
+                                   IsChecked="{Binding IsBatchEdit, Mode=TwoWay}"
+                                   HorizontalAlignment="Stretch" />
+                  </Grid>
 
                   <!-- 逐点修改：色卡颜色列表（单列） -->
                   <Border Grid.Row="2"
@@ -317,15 +322,26 @@
                       </ListBox>
                   </Border>
 
-                  <!-- 批量修改：将所有 XXX 替换为 YYY -->
-                  <StackPanel Grid.Row="2"
-                              IsVisible="{Binding IsBatchEdit}"
-                              VerticalAlignment="Top"
-                              Spacing="12"
-                              Margin="0,8,0,0">
-                      <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                          <TextBlock Text="将所有" FontSize="13" VerticalAlignment="Center" />
-                          <Button Command="{Binding ShowSourceColorDialogCommand}" Padding="8,4">
+                  <!-- 批量修改：将所有 XXX 替换为 YYY（撑满面板，带边框统一风格） -->
+                  <Border Grid.Row="2"
+                          Background="#FAFAFA"
+                          BorderBrush="#D0D0D0"
+                          BorderThickness="1"
+                          CornerRadius="4"
+                          Padding="6"
+                          IsVisible="{Binding IsBatchEdit}"
+                          Margin="0,8,0,0">
+                      <Grid ColumnDefinitions="Auto,*,Auto,*" VerticalAlignment="Center">
+                          <TextBlock Grid.Column="0"
+                                     Text="将所有"
+                                     FontSize="13"
+                                     VerticalAlignment="Center"
+                                     Margin="0,0,6,0" />
+                          <Button Grid.Column="1"
+                                  Command="{Binding ShowSourceColorDialogCommand}"
+                                  Padding="8,4"
+                                  HorizontalAlignment="Stretch"
+                                  HorizontalContentAlignment="Left">
                               <StackPanel Orientation="Horizontal" Spacing="6">
                                   <Border Width="18" Height="18"
                                           Background="{Binding BatchEditSourceColor.Brush}"
@@ -334,11 +350,20 @@
                                           CornerRadius="2" />
                                   <TextBlock Text="{Binding BatchEditSourceColor.DisplayName}"
                                              FontSize="12"
-                                             VerticalAlignment="Center" />
+                                             VerticalAlignment="Center"
+                                             TextTrimming="CharacterEllipsis" />
                               </StackPanel>
                           </Button>
-                          <TextBlock Text="替换为" FontSize="13" VerticalAlignment="Center" />
-                          <Button Command="{Binding ShowTargetColorDialogCommand}" Padding="8,4">
+                          <TextBlock Grid.Column="2"
+                                     Text="替换为"
+                                     FontSize="13"
+                                     VerticalAlignment="Center"
+                                     Margin="6,0,6,0" />
+                          <Button Grid.Column="3"
+                                  Command="{Binding ShowTargetColorDialogCommand}"
+                                  Padding="8,4"
+                                  HorizontalAlignment="Stretch"
+                                  HorizontalContentAlignment="Left">
                               <StackPanel Orientation="Horizontal" Spacing="6">
                                   <Border Width="18" Height="18"
                                           Background="{Binding BatchEditTargetColor.Brush}"
@@ -347,53 +372,57 @@
                                           CornerRadius="2" />
                                   <TextBlock Text="{Binding BatchEditTargetColor.DisplayName}"
                                              FontSize="12"
-                                             VerticalAlignment="Center" />
+                                             VerticalAlignment="Center"
+                                             TextTrimming="CharacterEllipsis" />
                               </StackPanel>
                           </Button>
-                      </StackPanel>
-                  </StackPanel>
+                      </Grid>
+                  </Border>
 
                   <!-- 底部：替换 / 取消 / 应用 -->
-                  <StackPanel Grid.Row="3"
-                              Orientation="Horizontal"
-                              Spacing="8"
-                              HorizontalAlignment="Right"
-                              Margin="0,8,0,0">
-                      <Button Content="替换"
+				  <Grid Grid.Row="3" ColumnDefinitions="Auto,*,Auto" Margin="0,8,0,0">
+					  <Button Grid.Column="0"
+                              Content="替换"
                               Command="{Binding ReplaceColorsCommand}"
                               IsVisible="{Binding IsBatchEdit}"
-                              Padding="24,6">
-                          <Button.Resources>
-                              <SolidColorBrush x:Key="ButtonBackground" Color="#2196F3" />
-                              <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#42A5F5" />
-                              <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#1976D2" />
-                              <SolidColorBrush x:Key="ButtonForeground" Color="White" />
-                              <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="White" />
-                          </Button.Resources>
-                      </Button>
-                      <Button Content="取消"
-                              Command="{Binding CancelEditPixelsCommand}"
-                              Padding="24,6">
-                          <Button.Resources>
-                              <SolidColorBrush x:Key="ButtonBackground" Color="#FF6B6B" />
-                              <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#FF8585" />
-                              <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#E04848" />
-                              <SolidColorBrush x:Key="ButtonForeground" Color="White" />
-                              <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="White" />
-                          </Button.Resources>
-                      </Button>
-                      <Button Content="应用"
-                              Command="{Binding ApplyEditPixelsCommand}"
-                              Padding="24,6">
-                          <Button.Resources>
-                              <SolidColorBrush x:Key="ButtonBackground" Color="#FFA500" />
-                              <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#FFB733" />
-                              <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#CC8400" />
-                              <SolidColorBrush x:Key="ButtonForeground" Color="White" />
-                              <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="White" />
-                          </Button.Resources>
-                      </Button>
-                  </StackPanel>
+                              Padding="14,6">
+						  <Button.Resources>
+							  <SolidColorBrush x:Key="ButtonBackground" Color="#2196F3" />
+							  <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#42A5F5" />
+							  <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#1976D2" />
+							  <SolidColorBrush x:Key="ButtonForeground" Color="White" />
+							  <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="White" />
+						  </Button.Resources>
+					  </Button>
+                      <StackPanel Grid.Column="2"
+                                  Orientation="Horizontal"
+                                  Spacing="8"
+                                  HorizontalAlignment="Right"
+                                  Margin="0,8,0,0">
+                          <Button Content="取消"
+                                  Command="{Binding CancelEditPixelsCommand}"
+                                  Padding="24,6">
+                              <Button.Resources>
+                                  <SolidColorBrush x:Key="ButtonBackground" Color="#FF6B6B" />
+                                  <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#FF8585" />
+                                  <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#E04848" />
+                                  <SolidColorBrush x:Key="ButtonForeground" Color="White" />
+                                  <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="White" />
+                              </Button.Resources>
+                          </Button>
+                          <Button Content="应用"
+                                  Command="{Binding ApplyEditPixelsCommand}"
+                                  Padding="24,6">
+                              <Button.Resources>
+                                  <SolidColorBrush x:Key="ButtonBackground" Color="#FFA500" />
+                                  <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#FFB733" />
+                                  <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#CC8400" />
+                                  <SolidColorBrush x:Key="ButtonForeground" Color="White" />
+                                  <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="White" />
+                              </Button.Resources>
+                          </Button>
+                      </StackPanel>
+				  </Grid>
               </Grid>
 
               <!-- 像素删除面板 -->
@@ -405,15 +434,21 @@
                              Margin="0,0,0,8"
                              VerticalAlignment="Center" />
 
-                  <!-- 状态按钮：逐点删除 / 批量删除 -->
-                  <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
-                      <ToggleButton Content="逐点删除"
-                                    Classes="stateButton"
-                                    IsChecked="{Binding IsPerPixelDelete, Mode=TwoWay}" />
-                      <ToggleButton Content="批量删除"
-                                    Classes="stateButton"
-                                    IsChecked="{Binding IsBatchDelete, Mode=TwoWay}" />
-                  </StackPanel>
+                  <!-- 状态按钮：逐点删除 / 批量删除（同组互斥，撑满面板） -->
+                  <Grid Grid.Row="1" ColumnDefinitions="*,8,*" Margin="0,0,0,8">
+                      <RadioButton Grid.Column="0"
+                                   Content="逐点删除"
+                                   Classes="stateButton"
+                                   GroupName="DeleteMode"
+                                   IsChecked="{Binding IsPerPixelDelete, Mode=TwoWay}"
+                                   HorizontalAlignment="Stretch" />
+                      <RadioButton Grid.Column="2"
+                                   Content="批量删除"
+                                   Classes="stateButton"
+                                   GroupName="DeleteMode"
+                                   IsChecked="{Binding IsBatchDelete, Mode=TwoWay}"
+                                   HorizontalAlignment="Stretch" />
+                  </Grid>
 
                   <!-- 逐点删除：提示文本 -->
                   <Border Grid.Row="2"
@@ -478,6 +513,7 @@
                       <Button Grid.Column="0"
                               Content="删除"
                               Command="{Binding DeleteColorCommand}"
+                              IsVisible="{Binding IsBatchDelete}"
                               Padding="14,6">
                           <Button.Resources>
                               <SolidColorBrush x:Key="ButtonBackground" Color="#F44336" />

@@ -53,18 +53,50 @@ public sealed record BoardSizeOption(int Value, string DisplayName);
 
 /// <summary>
 /// 色卡颜色项（用于像素编辑面板的颜色列表绑定）。
+/// IsEyedropper=true 时表示"取色"项，选中后可在像素画中拾取颜色。
 /// </summary>
 public sealed class PaletteColorItem
 {
     public BeadColor BeadColor { get; }
     public string DisplayName { get; }
     public IBrush Brush { get; }
+    public bool IsEyedropper { get; }
 
     public PaletteColorItem(BeadColor color)
     {
         BeadColor = color;
         DisplayName = color.Code == color.Name ? color.Code : $"{color.Code} {color.Name}";
         Brush = new SolidColorBrush(global::Avalonia.Media.Color.FromRgb(color.R, color.G, color.B));
+        IsEyedropper = false;
+    }
+
+    private PaletteColorItem(string displayName, IBrush brush)
+    {
+        BeadColor = default;
+        DisplayName = displayName;
+        Brush = brush;
+        IsEyedropper = true;
+    }
+
+    /// <summary>创建"取色"项，色块用棋盘格表示透明。</summary>
+    public static PaletteColorItem CreateEyedropper() => new("取色", CreateCheckerboardBrush());
+
+    private static IBrush CreateCheckerboardBrush()
+    {
+        var drawing = new DrawingGroup();
+        using (var ctx = drawing.Open())
+        {
+            ctx.DrawRectangle(Brushes.White, null, new Rect(0, 0, 9, 9));
+            ctx.DrawRectangle(new SolidColorBrush(global::Avalonia.Media.Color.FromRgb(0xCC, 0xCC, 0xCC)), null, new Rect(9, 0, 9, 9));
+            ctx.DrawRectangle(new SolidColorBrush(global::Avalonia.Media.Color.FromRgb(0xCC, 0xCC, 0xCC)), null, new Rect(0, 9, 9, 9));
+            ctx.DrawRectangle(Brushes.White, null, new Rect(9, 9, 9, 9));
+        }
+        return new DrawingBrush
+        {
+            Drawing = drawing,
+            DestinationRect = new RelativeRect(0, 0, 18, 18, RelativeUnit.Absolute),
+            TileMode = TileMode.None
+        };
     }
 }
 
@@ -334,6 +366,9 @@ public partial class MainWindowViewModel : ObservableObject
         // 防止两个按钮都弹起：若用户点击已按下的按钮，恢复为按下
         if (!value && !_isBatchEdit)
             IsPerPixelEdit = true;
+        // 离开逐点修改时退出取色状态
+        if (!value && _isEyedropping)
+            IsEyedropping = false;
     }
 
     /// <summary>编辑模式状态按钮互斥：按下"批量修改"时弹起"逐点修改"。</summary>
@@ -343,6 +378,9 @@ public partial class MainWindowViewModel : ObservableObject
             IsPerPixelEdit = false;
         if (!value && !_isPerPixelEdit)
             IsBatchEdit = true;
+        // 切换到批量修改时退出取色状态
+        if (value && _isEyedropping)
+            IsEyedropping = false;
     }
 
     /// <summary>删除模式状态按钮互斥：按下"逐点删除"时弹起"批量删除"。</summary>
@@ -367,6 +405,12 @@ public partial class MainWindowViewModel : ObservableObject
         // 切换到逐点删除时退出取色状态
         if (!value && _isEyedropping)
             IsEyedropping = false;
+    }
+
+    /// <summary>选中编辑颜色变化时：选中"取色"项则进入取色状态（仅逐点修改模式）。</summary>
+    partial void OnSelectedEditColorChanged(PaletteColorItem? value)
+    {
+        IsEyedropping = IsPixelEditing && IsPerPixelEdit && value?.IsEyedropper == true;
     }
 
     /// <summary>选中删除颜色变化时：选中"取色"项则进入取色状态。</summary>
@@ -647,8 +691,12 @@ public partial class MainWindowViewModel : ObservableObject
 
         var brand = _selectedBrand?.Value ?? BeadBrand.None;
         var colors = BeadPalettes.Get(brand);
-        var items = new List<PaletteColorItem>(colors.Count);
+        var items = new List<PaletteColorItem>(colors.Count + 1);
         _colorToItemMap = new Dictionary<uint, PaletteColorItem>(colors.Count);
+
+        // 第一行：取色项
+        items.Add(PaletteColorItem.CreateEyedropper());
+
         foreach (var c in colors)
         {
             var item = new PaletteColorItem(c);
@@ -658,13 +706,14 @@ public partial class MainWindowViewModel : ObservableObject
         }
 
         EditColors = items;
-        SelectedEditColor = items.Count > 0 ? items[0] : null;
+        // 默认选中第一个实际颜色（跳过取色项）
+        SelectedEditColor = items.Count > 1 ? items[1] : null;
 
         // 初始化批量编辑状态
         IsPerPixelEdit = true;
         IsBatchEdit = false;
         BatchEditSourceColor = GetMostFrequentPixelColor();
-        BatchEditTargetColor = items.Count > 0 ? items[0] : null;
+        BatchEditTargetColor = items.Count > 1 ? items[1] : null;
 
         IsPixelEditing = true;
         UndoCommand.NotifyCanExecuteChanged();
@@ -764,7 +813,7 @@ public partial class MainWindowViewModel : ObservableObject
         if (PixelatedData is null || SelectedDeleteColor is null) return;
 
         string colorCode = SelectedDeleteColor.BeadColor.Code;
-        bool confirmed = await ShowConfirmDialog($"确定要删除颜色为 {colorCode} 的所有像素吗？");
+        bool confirmed = await ShowConfirmDialog($"确定要删除颜色为 {colorCode} 的所有像素吗？", "确认删除");
         if (!confirmed) return;
 
         var color = SelectedDeleteColor.BeadColor;
@@ -798,7 +847,9 @@ public partial class MainWindowViewModel : ObservableObject
     }
 
     /// <summary>显示确认对话框，返回用户是否点击了"确定"。</summary>
-    private static async Task<bool> ShowConfirmDialog(string message)
+    /// <param name="message">提示消息。</param>
+    /// <param name="title">对话框标题（默认"确认"）。</param>
+    private static async Task<bool> ShowConfirmDialog(string message, string title = "确认")
     {
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime desktop)
             return false;
@@ -855,7 +906,7 @@ public partial class MainWindowViewModel : ObservableObject
 
         dialog = new Window
         {
-            Title = "确认删除",
+            Title = title,
             Width = 380,
             Height = 170,
             CanResize = false,
@@ -1099,9 +1150,9 @@ public partial class MainWindowViewModel : ObservableObject
         }
     }
 
-    /// <summary>批量替换：将所有被替换颜色的像素修改为目标颜色。</summary>
+    /// <summary>批量替换：将所有被替换颜色的像素修改为目标颜色。先弹出确认框，用户确认后才执行。</summary>
     [RelayCommand(CanExecute = nameof(CanReplaceColors))]
-    private void ReplaceColors()
+    private async Task ReplaceColorsAsync()
     {
         if (PixelatedData is null || BatchEditSourceColor is null || BatchEditTargetColor is null) return;
 
@@ -1111,6 +1162,12 @@ public partial class MainWindowViewModel : ObservableObject
         // 同色不替换
         if (sourceColor.R == targetColor.R && sourceColor.G == targetColor.G && sourceColor.B == targetColor.B)
             return;
+
+        // 弹出确认框，用户确认后才执行替换
+        bool confirmed = await ShowConfirmDialog(
+            $"确定要将所有 {BatchEditSourceColor.DisplayName} 像素替换为 {BatchEditTargetColor.DisplayName} 吗？",
+            "确认替换");
+        if (!confirmed) return;
 
         var data = PixelatedData;
         var changes = new List<(int, byte, byte, byte, byte)>();
@@ -1333,6 +1390,7 @@ public partial class MainWindowViewModel : ObservableObject
     /// <summary>
     /// 处理像素点击：
     /// - 编辑模式 + 逐点修改：将点击的像素修改为选中的色卡颜色
+    /// - 编辑模式 + 逐点修改 + 取色状态：拾取点击像素的颜色并在列表中选中
     /// - 删除模式 + 逐点删除：将点击的像素设为透明（删除）
     /// - 删除模式 + 批量删除 + 取色状态：拾取点击像素的颜色并在列表中选中
     /// </summary>
@@ -1355,6 +1413,20 @@ public partial class MainWindowViewModel : ObservableObject
             {
                 // 选中被取的颜色，OnSelectedDeleteColorChanged 会将 IsEyedropping 设为 false
                 SelectedDeleteColor = item;
+            }
+            return;
+        }
+
+        // 编辑模式 + 逐点修改 + 取色状态：拾取颜色
+        if (IsPixelEditing && IsPerPixelEdit && IsEyedropping)
+        {
+            // 跳过已删除的像素（alpha=0）
+            if (data[index + 3] == 0) return;
+            uint key = ((uint)data[index] << 16) | ((uint)data[index + 1] << 8) | data[index + 2];
+            if (_colorToItemMap.TryGetValue(key, out var item))
+            {
+                // 选中被取的颜色，OnSelectedEditColorChanged 会将 IsEyedropping 设为 false
+                SelectedEditColor = item;
             }
             return;
         }
