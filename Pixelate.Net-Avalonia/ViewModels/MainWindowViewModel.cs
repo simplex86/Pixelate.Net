@@ -1364,12 +1364,12 @@ public partial class MainWindowViewModel : ObservableObject
                 ColorCodeMap = null;
             }
 
-            OutputInfo = $"像素化后分辨率: {outW}×{outH}";
+            OutputInfo = $"豆图分辨率: {outW}×{outH}";
             RefreshBeadCount();
             int totalBoards = _boardsX * _boardsY;
             BoardInfo = totalBoards <= 1
-                ? $"底板: {_boardsX}×{_boardsY}"
-                : $"底板: {_boardsX}×{_boardsY} (共{totalBoards}张)";
+                ? $"底板数: {_boardsX}×{_boardsY}"
+                : $"底板数: {_boardsX}×{_boardsY} (共{totalBoards}张)";
         }
         catch (Exception)
         {
