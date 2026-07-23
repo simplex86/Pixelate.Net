@@ -445,5 +445,153 @@ namespace Pixelate.Net
             }
             return best;
         }
+
+        /// <summary>
+        /// 剔除像素画背景中的孤立噪点。
+        /// 噪点定义：与背景色不同、相邻（8 连通）且总数不超过 <paramref name="maxNoiseSize"/> 个像素的连通块，
+        /// 且其周围非透明像素均为背景色（即孤立出现在背景中）。
+        /// 替换策略：用噪点周围背景像素的平均 RGB 颜色替换噪点像素。
+        /// </summary>
+        /// <param name="rgba">像素画 RGBA 数据（每像素 4 字节，行优先）。</param>
+        /// <param name="width">像素画宽度。</param>
+        /// <param name="height">像素画高度。</param>
+        /// <param name="maxNoiseSize">噪点连通块的最大像素数（默认 3）。</param>
+        /// <returns>剔除噪点后的 RGBA 数据（新数组）。</returns>
+        public static byte[] RemoveNoise(ReadOnlySpan<byte> rgba, int width, int height, int maxNoiseSize = 3)
+        {
+            if (width <= 0 || height <= 0) return rgba.ToArray();
+            int pixelCount = width * height;
+            byte[] output = rgba.ToArray();
+
+            // 1. 检测背景色：统计非透明像素中最常见的颜色。
+            (byte bgR, byte bgG, byte bgB) = DetectBackgroundColor(rgba, pixelCount);
+
+            // 2. 标记每个像素：是否为背景色（非透明且颜色 == 背景色）。
+            bool[] isBackground = new bool[pixelCount];
+            for (int i = 0; i < pixelCount; i++)
+            {
+                int idx = i * 4;
+                if (rgba[idx + 3] == 0) continue; // 透明像素不算背景
+                if (rgba[idx] == bgR && rgba[idx + 1] == bgG && rgba[idx + 2] == bgB)
+                    isBackground[i] = true;
+            }
+
+            // 3. 连通域分析：找出所有非背景、非透明像素的 8 连通块。
+            bool[] visited = new bool[pixelCount];
+            // 8 邻域偏移（dx, dy）
+            int[] dx = { -1, 0, 1, -1, 1, -1, 0, 1 };
+            int[] dy = { -1, -1, -1, 0, 0, 1, 1, 1 };
+
+            for (int start = 0; start < pixelCount; start++)
+            {
+                if (visited[start] || isBackground[start]) continue;
+                if (rgba[start * 4 + 3] == 0) { visited[start] = true; continue; }
+
+                // BFS 收集连通块
+                var component = new List<int>(16) { start };
+                visited[start] = true;
+                int head = 0;
+                while (head < component.Count)
+                {
+                    int p = component[head++];
+                    int px = p % width;
+                    int py = p / width;
+                    for (int k = 0; k < 8; k++)
+                    {
+                        int nx = px + dx[k];
+                        int ny = py + dy[k];
+                        if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+                        int np = ny * width + nx;
+                        if (visited[np] || isBackground[np]) continue;
+                        if (rgba[np * 4 + 3] == 0) { visited[np] = true; continue; }
+                        visited[np] = true;
+                        component.Add(np);
+                    }
+                }
+
+                // 4. 仅处理小连通块（噪点候选）。
+                if (component.Count > maxNoiseSize) continue;
+
+                // 5. 孤立性判定：收集连通块周围的非透明像素，检查是否全为背景色。
+                //    透明像素不计入判定（既不算背景也不算非背景）。
+                var surroundSet = new HashSet<int>();
+                bool isIsolated = true;
+                foreach (int p in component)
+                {
+                    int px = p % width;
+                    int py = p / width;
+                    for (int k = 0; k < 8; k++)
+                    {
+                        int nx = px + dx[k];
+                        int ny = py + dy[k];
+                        if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+                        int np = ny * width + nx;
+                        if (component.Contains(np)) continue;
+                        if (rgba[np * 4 + 3] == 0) continue; // 透明像素跳过
+                        if (!isBackground[np])
+                        {
+                            // 周围存在非背景、非透明像素 → 不是孤立噪点
+                            isIsolated = false;
+                            break;
+                        }
+                        surroundSet.Add(np);
+                    }
+                    if (!isIsolated) break;
+                }
+
+                // 不孤立，或周围没有可用背景像素（如全被透明包围），跳过。
+                if (!isIsolated || surroundSet.Count == 0) continue;
+
+                // 6. 计算周围背景像素的平均 RGB，替换噪点。
+                long sumR = 0, sumG = 0, sumB = 0;
+                foreach (int np in surroundSet)
+                {
+                    sumR += rgba[np * 4];
+                    sumG += rgba[np * 4 + 1];
+                    sumB += rgba[np * 4 + 2];
+                }
+                byte avgR = (byte)(sumR / surroundSet.Count);
+                byte avgG = (byte)(sumG / surroundSet.Count);
+                byte avgB = (byte)(sumB / surroundSet.Count);
+
+                foreach (int p in component)
+                {
+                    int idx = p * 4;
+                    output[idx] = avgR;
+                    output[idx + 1] = avgG;
+                    output[idx + 2] = avgB;
+                    // alpha 保持不变（255）
+                }
+            }
+
+            return output;
+        }
+
+        /// <summary>
+        /// 检测背景色：统计非透明像素中最常见的 RGB 颜色。
+        /// 若全透明则返回黑色作为兜底。
+        /// </summary>
+        private static (byte r, byte g, byte b) DetectBackgroundColor(ReadOnlySpan<byte> rgba, int pixelCount)
+        {
+            var counts = new Dictionary<uint, int>();
+            for (int i = 0; i < pixelCount; i++)
+            {
+                int idx = i * 4;
+                if (rgba[idx + 3] == 0) continue; // 跳过透明像素
+                uint key = ((uint)rgba[idx] << 16) | ((uint)rgba[idx + 1] << 8) | rgba[idx + 2];
+                counts[key] = counts.TryGetValue(key, out var c) ? c + 1 : 1;
+            }
+
+            if (counts.Count == 0) return (0, 0, 0);
+
+            uint bestKey = 0;
+            int bestCount = 0;
+            foreach (var (key, count) in counts)
+            {
+                if (count > bestCount) { bestCount = count; bestKey = key; }
+            }
+
+            return ((byte)(bestKey >> 16), (byte)(bestKey >> 8), (byte)bestKey);
+        }
     }
 }

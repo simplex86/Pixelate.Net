@@ -217,6 +217,7 @@ public partial class MainWindowViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(ExportCommand))]
     [NotifyCanExecuteChangedFor(nameof(PrintCommand))]
     [NotifyCanExecuteChangedFor(nameof(ShowDetailsCommand))]
+    [NotifyCanExecuteChangedFor(nameof(RemoveNoiseCommand))]
     private byte[]? _pixelatedData;
     [ObservableProperty] private int _pixelatedWidth;
     [ObservableProperty] private int _pixelatedHeight;
@@ -233,6 +234,7 @@ public partial class MainWindowViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(PrintCommand))]
     [NotifyCanExecuteChangedFor(nameof(ShowDetailsCommand))]
     [NotifyCanExecuteChangedFor(nameof(ReplaceColorsCommand))]
+    [NotifyCanExecuteChangedFor(nameof(RemoveNoiseCommand))]
     private bool _isPixelEditing;
 
     /// <summary>编辑模式：逐点修改（默认按下）。</summary>
@@ -276,6 +278,7 @@ public partial class MainWindowViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(ExportCommand))]
     [NotifyCanExecuteChangedFor(nameof(PrintCommand))]
     [NotifyCanExecuteChangedFor(nameof(ShowDetailsCommand))]
+    [NotifyCanExecuteChangedFor(nameof(RemoveNoiseCommand))]
     private bool _isPixelDeleting;
 
     /// <summary>删除模式：逐点删除（默认按下）。</summary>
@@ -546,6 +549,9 @@ public partial class MainWindowViewModel : ObservableObject
     /// <summary>是否可进入像素删除：需已有像素化结果、选中了品牌色卡且未处于编辑模式。</summary>
     public bool CanDeletePixels => PixelatedData is not null && _selectedBrand?.Value != BeadBrand.None && !IsPixelEditing;
 
+    /// <summary>是否可剔除噪点：需已有像素化结果且未处于编辑/删除模式。</summary>
+    public bool CanRemoveNoise => PixelatedData is not null && !IsPixelEditing && !IsPixelDeleting;
+
     /// <summary>是否可删除选中颜色：处于批量删除模式且选中了非取色颜色。</summary>
     public bool CanDeleteColor => IsPixelDeleting && IsBatchDelete && SelectedDeleteColor is not null && !SelectedDeleteColor.IsEyedropper;
 
@@ -793,6 +799,22 @@ public partial class MainWindowViewModel : ObservableObject
         IsBatchDelete = false;
         IsPixelDeleting = false;
         UndoCommand.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>
+    /// 剔除像素画背景中的孤立噪点（≤3 个相邻像素、与背景色不同且被背景色包围），
+    /// 替换为周围背景像素的平均颜色。
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanRemoveNoise))]
+    private async Task RemoveNoiseAsync()
+    {
+        if (PixelatedData is null) return;
+        var data = PixelatedData;
+        int w = PixelatedWidth;
+        int h = PixelatedHeight;
+        byte[] newData = await Task.Run(() => ImagePixelator.RemoveNoise(data, w, h));
+        PixelatedData = newData;
+        RefreshBeadCount();
     }
 
     /// <summary>删除所有与选中颜色相同的像素（设为透明）。</summary>
