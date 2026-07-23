@@ -235,6 +235,7 @@ public partial class MainWindowViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(ShowDetailsCommand))]
     [NotifyCanExecuteChangedFor(nameof(ReplaceColorsCommand))]
     [NotifyCanExecuteChangedFor(nameof(RemoveNoiseCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ExecuteRemoveNoiseCommand))]
     private bool _isPixelEditing;
 
     /// <summary>编辑模式：逐点修改（默认按下）。</summary>
@@ -279,7 +280,32 @@ public partial class MainWindowViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(PrintCommand))]
     [NotifyCanExecuteChangedFor(nameof(ShowDetailsCommand))]
     [NotifyCanExecuteChangedFor(nameof(RemoveNoiseCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ExecuteRemoveNoiseCommand))]
     private bool _isPixelDeleting;
+
+    /// <summary>是否处于噪点剔除模式。</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanExport))]
+    [NotifyPropertyChangedFor(nameof(CanPrint))]
+    [NotifyPropertyChangedFor(nameof(IsNormalView))]
+    [NotifyPropertyChangedFor(nameof(CanEditPixels))]
+    [NotifyPropertyChangedFor(nameof(CanDeletePixels))]
+    [NotifyCanExecuteChangedFor(nameof(DeletePixelsCommand))]
+    [NotifyCanExecuteChangedFor(nameof(EditPixelsCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ExportCommand))]
+    [NotifyCanExecuteChangedFor(nameof(PrintCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ShowDetailsCommand))]
+    [NotifyCanExecuteChangedFor(nameof(RemoveNoiseCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ExecuteRemoveNoiseCommand))]
+    [NotifyCanExecuteChangedFor(nameof(CancelRemoveNoiseCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ApplyRemoveNoiseCommand))]
+    private bool _isPixelNoiseRemoving;
+
+    /// <summary>噪点剔除：连通块周围背景像素的最低占比（百分比，50～100）。</summary>
+    [ObservableProperty] private double _noiseRatio = 80;
+
+    /// <summary>噪点剔除：噪点连通块的最大像素数（1～9）。</summary>
+    [ObservableProperty] private int _maxNoiseSize = 3;
 
     /// <summary>删除模式：逐点删除（默认按下）。</summary>
     [ObservableProperty]
@@ -537,20 +563,20 @@ public partial class MainWindowViewModel : ObservableObject
         }
     }
 
-    /// <summary>是否处于正常视图（非编辑、非删除模式）。</summary>
-    public bool IsNormalView => !IsPixelEditing && !IsPixelDeleting;
+    /// <summary>是否处于正常视图（非编辑、非删除、非噪点剔除模式）。</summary>
+    public bool IsNormalView => !IsPixelEditing && !IsPixelDeleting && !IsPixelNoiseRemoving;
 
     /// <summary>像素网格是否可交互（编辑或删除模式）。</summary>
     public bool IsPixelInteractive => IsPixelEditing || IsPixelDeleting;
 
-    /// <summary>是否可进入像素编辑：需已有像素化结果、选中了品牌色卡且未处于删除模式。</summary>
-    public bool CanEditPixels => PixelatedData is not null && _selectedBrand?.Value != BeadBrand.None && !IsPixelDeleting;
+    /// <summary>是否可进入像素编辑：需已有像素化结果、选中了品牌色卡且未处于删除/噪点剔除模式。</summary>
+    public bool CanEditPixels => PixelatedData is not null && _selectedBrand?.Value != BeadBrand.None && !IsPixelDeleting && !IsPixelNoiseRemoving;
 
-    /// <summary>是否可进入像素删除：需已有像素化结果、选中了品牌色卡且未处于编辑模式。</summary>
-    public bool CanDeletePixels => PixelatedData is not null && _selectedBrand?.Value != BeadBrand.None && !IsPixelEditing;
+    /// <summary>是否可进入像素删除：需已有像素化结果、选中了品牌色卡且未处于编辑/噪点剔除模式。</summary>
+    public bool CanDeletePixels => PixelatedData is not null && _selectedBrand?.Value != BeadBrand.None && !IsPixelEditing && !IsPixelNoiseRemoving;
 
-    /// <summary>是否可剔除噪点：需已有像素化结果且未处于编辑/删除模式。</summary>
-    public bool CanRemoveNoise => PixelatedData is not null && !IsPixelEditing && !IsPixelDeleting;
+    /// <summary>是否可进入噪点剔除模式：需已有像素化结果且未处于编辑/删除模式。</summary>
+    public bool CanRemoveNoise => PixelatedData is not null && !IsPixelEditing && !IsPixelDeleting && !IsPixelNoiseRemoving;
 
     /// <summary>是否可删除选中颜色：处于批量删除模式且选中了非取色颜色。</summary>
     public bool CanDeleteColor => IsPixelDeleting && IsBatchDelete && SelectedDeleteColor is not null && !SelectedDeleteColor.IsEyedropper;
@@ -564,14 +590,14 @@ public partial class MainWindowViewModel : ObservableObject
     /// <summary>是否可显示颜色编码：需选中了品牌色卡，且未处于原图编辑状态。</summary>
     public bool CanShowCodes => _selectedBrand?.Value != BeadBrand.None && !IsEditing;
 
-    /// <summary>是否可导出：需已有像素化结果且未处于编辑/删除模式。</summary>
-    public bool CanExport => PixelatedData is not null && !IsEditing && !IsPixelEditing && !IsPixelDeleting;
+    /// <summary>是否可导出：需已有像素化结果且未处于编辑/删除/噪点剔除模式。</summary>
+    public bool CanExport => PixelatedData is not null && !IsEditing && !IsPixelEditing && !IsPixelDeleting && !IsPixelNoiseRemoving;
 
     /// <summary>是否可打印：与导出条件一致。</summary>
     public bool CanPrint => CanExport;
 
-    /// <summary>是否可查看拼豆统计详情：需已有像素化结果且未处于编辑/删除模式。</summary>
-    public bool CanShowDetails => PixelatedData is not null && !IsEditing && !IsPixelEditing && !IsPixelDeleting;
+    /// <summary>是否可查看拼豆统计详情：需已有像素化结果且未处于编辑/删除/噪点剔除模式。</summary>
+    public bool CanShowDetails => PixelatedData is not null && !IsEditing && !IsPixelEditing && !IsPixelDeleting && !IsPixelNoiseRemoving;
 
     /// <summary>是否已有像素化结果（用于控制"详情"按钮的可见性）。</summary>
     public bool HasPixelatedData => PixelatedData is not null;
@@ -594,6 +620,8 @@ public partial class MainWindowViewModel : ObservableObject
     private byte[]? _pixelEditBackup;
     // 像素删除前的快照，供取消时恢复。
     private byte[]? _pixelDeleteBackup;
+    // 噪点剔除前的快照，供取消时恢复。
+    private byte[]? _pixelNoiseBackup;
     // 撤销栈：每项为一次操作的若干像素变更 (像素索引, 旧R, 旧G, 旧B, 旧A)。
     private readonly Stack<List<(int index, byte r, byte g, byte b, byte a)>> _undoStack = new();
     // 取色用 RGB→PaletteColorItem 查找表（编辑模式）。
@@ -624,13 +652,14 @@ public partial class MainWindowViewModel : ObservableObject
         ExportCommand.NotifyCanExecuteChanged();
         PrintCommand.NotifyCanExecuteChanged();
         ShowDetailsCommand.NotifyCanExecuteChanged();
+        RemoveNoiseCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(HasPixelatedData));
     }
 
     /// <summary>参数变化时自动重新生成像素化结果。</summary>
     private async Task AutoGenerateAsync()
     {
-        if (_suppressAutoGenerate || _sourceRgba is null || IsPixelEditing || IsPixelDeleting) return;
+        if (_suppressAutoGenerate || _sourceRgba is null || IsPixelEditing || IsPixelDeleting || IsPixelNoiseRemoving) return;
         // 生成期间发生的参数变更标记为待重算，避免丢失用户最新的设置。
         if (_isGenerating)
         {
@@ -801,20 +830,51 @@ public partial class MainWindowViewModel : ObservableObject
         UndoCommand.NotifyCanExecuteChanged();
     }
 
-    /// <summary>
-    /// 剔除像素画背景中的孤立噪点（≤3 个相邻像素、与背景色不同且被背景色包围），
-    /// 替换为周围背景像素的平均颜色。
-    /// </summary>
+    /// <summary>进入噪点剔除模式，备份当前像素画数据。</summary>
     [RelayCommand(CanExecute = nameof(CanRemoveNoise))]
-    private async Task RemoveNoiseAsync()
+    private void RemoveNoise()
+    {
+        _pixelNoiseBackup = PixelatedData;
+        IsPixelNoiseRemoving = true;
+    }
+
+    /// <summary>执行噪点剔除：弹出确认框，确认后按当前阈值处理噪点。</summary>
+    [RelayCommand(CanExecute = nameof(IsPixelNoiseRemoving))]
+    private async Task ExecuteRemoveNoiseAsync()
     {
         if (PixelatedData is null) return;
+
+        double ratio = Math.Clamp(NoiseRatio, 50, 100) / 100.0;
+        int maxNoise = Math.Clamp(MaxNoiseSize, 1, 9);
+        bool confirmed = await ShowConfirmDialog(
+            $"将以背景占比阈值 {NoiseRatio:F0}%、连通上限 {maxNoise} 剔除噪点，确定继续吗？", "确认剔除噪点");
+        if (!confirmed) return;
+
         var data = PixelatedData;
         int w = PixelatedWidth;
         int h = PixelatedHeight;
-        byte[] newData = await Task.Run(() => ImagePixelator.RemoveNoise(data, w, h));
+        byte[] newData = await Task.Run(() => ImagePixelator.RemoveNoise(data, w, h, ratio, maxNoise));
         PixelatedData = newData;
         RefreshBeadCount();
+    }
+
+    /// <summary>取消噪点剔除，恢复进入模式前的像素画数据。</summary>
+    [RelayCommand(CanExecute = nameof(IsPixelNoiseRemoving))]
+    private void CancelRemoveNoise()
+    {
+        if (_pixelNoiseBackup is not null)
+            PixelatedData = _pixelNoiseBackup;
+        _pixelNoiseBackup = null;
+        IsPixelNoiseRemoving = false;
+        RefreshBeadCount();
+    }
+
+    /// <summary>应用噪点剔除结果，退出模式。</summary>
+    [RelayCommand(CanExecute = nameof(IsPixelNoiseRemoving))]
+    private void ApplyRemoveNoise()
+    {
+        _pixelNoiseBackup = null;
+        IsPixelNoiseRemoving = false;
     }
 
     /// <summary>删除所有与选中颜色相同的像素（设为透明）。</summary>

@@ -448,39 +448,47 @@ namespace Pixelate.Net
 
         /// <summary>
         /// 剔除像素画背景中的孤立噪点。
-        /// 噪点定义：与背景色不同、相邻（8 连通）且总数不超过 <paramref name="maxNoiseSize"/> 个像素的连通块，
-        /// 且其周围非透明像素均为背景色（即孤立出现在背景中）。
-        /// 替换策略：用噪点周围背景像素的平均 RGB 颜色替换噪点像素。
+        /// 背景可以是透明像素或最常见的颜色。噪点定义为：与背景不同、相邻（4 连通）且总数不超过
+        /// <paramref name="maxNoiseSize"/> 个像素的连通块，且其周围像素中背景像素占比
+        /// ≥ <paramref name="minBackgroundRatio"/>。
+        /// 替换策略：若背景为透明则将噪点设为透明；否则用周围非透明背景像素的平均 RGB 替换。
         /// </summary>
         /// <param name="rgba">像素画 RGBA 数据（每像素 4 字节，行优先）。</param>
         /// <param name="width">像素画宽度。</param>
         /// <param name="height">像素画高度。</param>
+        /// <param name="minBackgroundRatio">连通块周围背景像素的最低占比（0.0～1.0）。</param>
         /// <param name="maxNoiseSize">噪点连通块的最大像素数（默认 3）。</param>
         /// <returns>剔除噪点后的 RGBA 数据（新数组）。</returns>
-        public static byte[] RemoveNoise(ReadOnlySpan<byte> rgba, int width, int height, int maxNoiseSize = 3)
+        public static byte[] RemoveNoise(ReadOnlySpan<byte> rgba, int width, int height, double minBackgroundRatio, int maxNoiseSize = 3)
         {
             if (width <= 0 || height <= 0) return rgba.ToArray();
             int pixelCount = width * height;
             byte[] output = rgba.ToArray();
 
-            // 1. 检测背景色：统计非透明像素中最常见的颜色。
-            (byte bgR, byte bgG, byte bgB) = DetectBackgroundColor(rgba, pixelCount);
+            // 1. 检测背景：统计所有像素（含透明），最常见的"颜色"即为背景。
+            //    透明像素用 alpha=0 标识，非透明像素用 RGB 组合标识。
+            bool bgIsTransparent = DetectBackgroundIsTransparent(rgba, pixelCount, out byte bgR, out byte bgG, out byte bgB);
 
-            // 2. 标记每个像素：是否为背景色（非透明且颜色 == 背景色）。
+            // 2. 标记每个像素是否为背景。
             bool[] isBackground = new bool[pixelCount];
             for (int i = 0; i < pixelCount; i++)
             {
                 int idx = i * 4;
-                if (rgba[idx + 3] == 0) continue; // 透明像素不算背景
-                if (rgba[idx] == bgR && rgba[idx + 1] == bgG && rgba[idx + 2] == bgB)
-                    isBackground[i] = true;
+                if (bgIsTransparent)
+                {
+                    if (rgba[idx + 3] == 0) isBackground[i] = true;
+                }
+                else
+                {
+                    if (rgba[idx + 3] != 0 && rgba[idx] == bgR && rgba[idx + 1] == bgG && rgba[idx + 2] == bgB)
+                        isBackground[i] = true;
+                }
             }
 
-            // 3. 连通域分析：找出所有非背景、非透明像素的 8 连通块。
+            // 3. 连通域分析：找出所有非背景、非透明像素的 4 连通块。
             bool[] visited = new bool[pixelCount];
-            // 8 邻域偏移（dx, dy）
-            int[] dx = { -1, 0, 1, -1, 1, -1, 0, 1 };
-            int[] dy = { -1, -1, -1, 0, 0, 1, 1, 1 };
+            int[] dx = { -1, 1, 0, 0 };
+            int[] dy = { 0, 0, -1, 1 };
 
             for (int start = 0; start < pixelCount; start++)
             {
@@ -496,7 +504,7 @@ namespace Pixelate.Net
                     int p = component[head++];
                     int px = p % width;
                     int py = p / width;
-                    for (int k = 0; k < 8; k++)
+                    for (int k = 0; k < 4; k++)
                     {
                         int nx = px + dx[k];
                         int ny = py + dy[k];
@@ -512,55 +520,77 @@ namespace Pixelate.Net
                 // 4. 仅处理小连通块（噪点候选）。
                 if (component.Count > maxNoiseSize) continue;
 
-                // 5. 孤立性判定：收集连通块周围的非透明像素，检查是否全为背景色。
-                //    透明像素不计入判定（既不算背景也不算非背景）。
+                // 5. 占比判定：统计连通块周围像素中背景像素的占比。
+                //    周围像素采用 8 邻域，包括所有非连通块、非越界的像素（含透明像素）。
+                int[] sdx = { -1, 0, 1, -1, 1, -1, 0, 1 };
+                int[] sdy = { -1, -1, -1, 0, 0, 1, 1, 1 };
                 var surroundSet = new HashSet<int>();
-                bool isIsolated = true;
                 foreach (int p in component)
                 {
                     int px = p % width;
                     int py = p / width;
                     for (int k = 0; k < 8; k++)
                     {
-                        int nx = px + dx[k];
-                        int ny = py + dy[k];
+                        int nx = px + sdx[k];
+                        int ny = py + sdy[k];
                         if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
                         int np = ny * width + nx;
                         if (component.Contains(np)) continue;
-                        if (rgba[np * 4 + 3] == 0) continue; // 透明像素跳过
-                        if (!isBackground[np])
-                        {
-                            // 周围存在非背景、非透明像素 → 不是孤立噪点
-                            isIsolated = false;
-                            break;
-                        }
                         surroundSet.Add(np);
                     }
-                    if (!isIsolated) break;
                 }
 
-                // 不孤立，或周围没有可用背景像素（如全被透明包围），跳过。
-                if (!isIsolated || surroundSet.Count == 0) continue;
+                if (surroundSet.Count == 0) continue;
 
-                // 6. 计算周围背景像素的平均 RGB，替换噪点。
-                long sumR = 0, sumG = 0, sumB = 0;
+                int bgCount = 0;
                 foreach (int np in surroundSet)
                 {
-                    sumR += rgba[np * 4];
-                    sumG += rgba[np * 4 + 1];
-                    sumB += rgba[np * 4 + 2];
+                    if (isBackground[np]) bgCount++;
                 }
-                byte avgR = (byte)(sumR / surroundSet.Count);
-                byte avgG = (byte)(sumG / surroundSet.Count);
-                byte avgB = (byte)(sumB / surroundSet.Count);
 
-                foreach (int p in component)
+                double ratio = (double)bgCount / surroundSet.Count;
+                if (ratio < minBackgroundRatio) continue;
+
+                // 6. 替换噪点：
+                //    背景为透明 → 将噪点设为透明（alpha=0）；
+                //    背景为颜色 → 用周围非透明背景像素的平均 RGB 替换。
+                if (bgIsTransparent)
                 {
-                    int idx = p * 4;
-                    output[idx] = avgR;
-                    output[idx + 1] = avgG;
-                    output[idx + 2] = avgB;
-                    // alpha 保持不变（255）
+                    foreach (int p in component)
+                    {
+                        output[p * 4 + 3] = 0;
+                    }
+                }
+                else
+                {
+                    // 收集周围非透明背景像素用于计算平均色
+                    long sumR = 0, sumG = 0, sumB = 0;
+                    int bgPixelCount = 0;
+                    foreach (int np in surroundSet)
+                    {
+                        if (isBackground[np] && rgba[np * 4 + 3] != 0)
+                        {
+                            sumR += rgba[np * 4];
+                            sumG += rgba[np * 4 + 1];
+                            sumB += rgba[np * 4 + 2];
+                            bgPixelCount++;
+                        }
+                    }
+
+                    // 若无可用背景像素（理论上不应发生，因为 ratio 已达标），跳过
+                    if (bgPixelCount == 0) continue;
+
+                    byte avgR = (byte)(sumR / bgPixelCount);
+                    byte avgG = (byte)(sumG / bgPixelCount);
+                    byte avgB = (byte)(sumB / bgPixelCount);
+
+                    foreach (int p in component)
+                    {
+                        int idx = p * 4;
+                        output[idx] = avgR;
+                        output[idx + 1] = avgG;
+                        output[idx + 2] = avgB;
+                    }
                 }
             }
 
@@ -568,30 +598,42 @@ namespace Pixelate.Net
         }
 
         /// <summary>
-        /// 检测背景色：统计非透明像素中最常见的 RGB 颜色。
-        /// 若全透明则返回黑色作为兜底。
+        /// 检测背景是否为透明：统计所有像素（含透明），若透明像素数 ≥ 任意单一颜色像素数则背景为透明。
+        /// 否则背景为最常见的非透明颜色，通过 out 参数返回该颜色。
         /// </summary>
-        private static (byte r, byte g, byte b) DetectBackgroundColor(ReadOnlySpan<byte> rgba, int pixelCount)
+        private static bool DetectBackgroundIsTransparent(ReadOnlySpan<byte> rgba, int pixelCount, out byte bgR, out byte bgG, out byte bgB)
         {
-            var counts = new Dictionary<uint, int>();
+            int transparentCount = 0;
+            var colorCounts = new Dictionary<uint, int>();
+
             for (int i = 0; i < pixelCount; i++)
             {
                 int idx = i * 4;
-                if (rgba[idx + 3] == 0) continue; // 跳过透明像素
-                uint key = ((uint)rgba[idx] << 16) | ((uint)rgba[idx + 1] << 8) | rgba[idx + 2];
-                counts[key] = counts.TryGetValue(key, out var c) ? c + 1 : 1;
+                if (rgba[idx + 3] == 0)
+                {
+                    transparentCount++;
+                }
+                else
+                {
+                    uint key = ((uint)rgba[idx] << 16) | ((uint)rgba[idx + 1] << 8) | rgba[idx + 2];
+                    colorCounts[key] = colorCounts.TryGetValue(key, out var c) ? c + 1 : 1;
+                }
             }
 
-            if (counts.Count == 0) return (0, 0, 0);
-
-            uint bestKey = 0;
-            int bestCount = 0;
-            foreach (var (key, count) in counts)
+            // 找出最常见的非透明颜色
+            uint bestColorKey = 0;
+            int bestColorCount = 0;
+            foreach (var (key, count) in colorCounts)
             {
-                if (count > bestCount) { bestCount = count; bestKey = key; }
+                if (count > bestColorCount) { bestColorCount = count; bestColorKey = key; }
             }
 
-            return ((byte)(bestKey >> 16), (byte)(bestKey >> 8), (byte)bestKey);
+            bgR = (byte)(bestColorKey >> 16);
+            bgG = (byte)(bestColorKey >> 8);
+            bgB = (byte)bestColorKey;
+
+            // 透明像素数 >= 最常见颜色像素数 → 背景为透明
+            return transparentCount >= bestColorCount;
         }
     }
 }

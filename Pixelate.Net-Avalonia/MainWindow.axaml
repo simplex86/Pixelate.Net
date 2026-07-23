@@ -4,7 +4,7 @@
         xmlns:controls="using:Pixelate.Net.Avalonia.Controls"
         x:Class="Pixelate.Net.Avalonia.MainWindow"
         x:DataType="vm:MainWindowViewModel"
-        Title="拼豆像素画生成器 v1.0.55"
+        Title="拼豆像素画生成器 v1.0.57"
         Width="1280" Height="960"
         MinWidth="1080" MinHeight="960"
         WindowStartupLocation="CenterScreen"
@@ -579,6 +579,96 @@
                           </Button>
                           <Button Content="应用"
                                   Command="{Binding ApplyDeletePixelsCommand}"
+                                  Padding="24,6">
+                              <Button.Resources>
+                                  <SolidColorBrush x:Key="ButtonBackground" Color="#FFA500" />
+                                  <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#FFB733" />
+                                  <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#CC8400" />
+                                  <SolidColorBrush x:Key="ButtonForeground" Color="White" />
+                                  <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="White" />
+                              </Button.Resources>
+                          </Button>
+                      </StackPanel>
+                  </Grid>
+              </Grid>
+
+              <!-- 像素噪点剔除面板 -->
+              <Grid RowDefinitions="*,Auto" IsVisible="{Binding IsPixelNoiseRemoving}">
+                  <!-- 中间：说明文本 -->
+                  <Border Grid.Row="0"
+                          Background="#FAFAFA"
+                          BorderBrush="#D0D0D0"
+                          BorderThickness="1"
+                          CornerRadius="4"
+                          Padding="12">
+					  <Grid RowDefinitions="Auto,Auto,Auto,*" IsVisible="{Binding IsPixelNoiseRemoving}">
+					      <!-- 连通上限 -->
+					      <Grid Grid.Row="0" ColumnDefinitions="Auto,8,*" Margin="0,0,0,8">
+						      <TextBlock Grid.Column="0"
+										 Text="连通上限"
+									     FontSize="13"
+									     VerticalAlignment="Center" />
+						      <NumericUpDown Grid.Column="2"
+										     Value="{Binding MaxNoiseSize}"
+										     Minimum="1"
+										     Maximum="9"
+										     Increment="1"
+										     FormatString="0"
+											 HorizontalAlignment="Stretch"/>
+					      </Grid>
+					      <!-- 孤立阈值 -->
+					      <Grid Grid.Row="1" ColumnDefinitions="Auto,8,*" Margin="0,0,0,8">
+						      <TextBlock Grid.Column="0"
+										 Text="孤立阈值"
+									     FontSize="13"
+									     VerticalAlignment="Center" />
+						      <NumericUpDown Grid.Column="2"
+										     Value="{Binding NoiseRatio}"
+										     Minimum="50"
+										     Maximum="100"
+										     Increment="5"
+										     FormatString="0"
+											 HorizontalAlignment="Stretch"/>
+					      </Grid>
+					      <TextBlock Grid.Row="2"
+									 Text="阈值越低，判定为噪点的要求越宽松"
+                                     FontSize="12"
+                                     TextWrapping="Wrap"
+                                     VerticalAlignment="Center"
+                                     HorizontalAlignment="Center" />
+					  </Grid>
+                  </Border>
+
+                  <!-- 底部：剔除 + 取消/确定 -->
+                  <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto" Margin="0,6,0,0">
+                      <Button Grid.Column="0"
+                              Content="剔除"
+                              Command="{Binding ExecuteRemoveNoiseCommand}"
+                              Padding="14,6">
+                          <Button.Resources>
+                              <SolidColorBrush x:Key="ButtonBackground" Color="#F44336" />
+                              <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#FF5C5C" />
+                              <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#D32F2F" />
+                              <SolidColorBrush x:Key="ButtonForeground" Color="White" />
+                              <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="White" />
+                          </Button.Resources>
+                      </Button>
+                      <StackPanel Grid.Column="2"
+                                  Orientation="Horizontal"
+                                  Spacing="8">
+                          <Button Content="取消"
+                                  Command="{Binding CancelRemoveNoiseCommand}"
+                                  Padding="24,6">
+                              <Button.Resources>
+                                  <SolidColorBrush x:Key="ButtonBackground" Color="#FF6B6B" />
+                                  <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#FF8585" />
+                                  <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#E04848" />
+                                  <SolidColorBrush x:Key="ButtonForeground" Color="White" />
+                                  <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="White" />
+                              </Button.Resources>
+                          </Button>
+                          <Button Content="确定"
+                                  Command="{Binding ApplyRemoveNoiseCommand}"
                                   Padding="24,6">
                               <Button.Resources>
                                   <SolidColorBrush x:Key="ButtonBackground" Color="#FFA500" />
