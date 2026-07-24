@@ -4,7 +4,9 @@ using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.VisualTree;
 
 namespace Pixelate.Net.Avalonia.Controls;
 
@@ -62,15 +64,46 @@ public class PixelGridControl : Control
     public static readonly StyledProperty<bool> IsEyedroppingProperty =
         AvaloniaProperty.Register<PixelGridControl, bool>(nameof(IsEyedropping));
 
+    /// <summary>缩放比例（1.0=100% 适应画布，最大 5.0=500%）。</summary>
+    public static readonly StyledProperty<double> ZoomProperty =
+        AvaloniaProperty.Register<PixelGridControl, double>(nameof(Zoom), defaultValue: 1.0);
+
+    /// <summary>最小缩放比例（100%）。</summary>
+    public const double MinZoom = 1.0;
+
+    /// <summary>最大缩放比例（500%）。</summary>
+    public const double MaxZoom = 5.0;
+
     /// <summary>像素被点击时触发（仅在 IsEditable=true 时）。</summary>
     public event EventHandler<PixelClickedEventArgs>? PixelClicked;
 
     static PixelGridControl()
     {
-        AffectsRender<PixelGridControl>(PixelDataProperty, GridWidthProperty, GridHeightProperty, DisplayModeProperty, ShowCodesProperty, ColorCodeMapProperty);
+        AffectsRender<PixelGridControl>(PixelDataProperty, GridWidthProperty, GridHeightProperty, DisplayModeProperty, ShowCodesProperty, ColorCodeMapProperty, ZoomProperty);
+        AffectsMeasure<PixelGridControl>(ZoomProperty);
         IsEditableProperty.Changed.AddClassHandler<PixelGridControl>((c, e) => c.UpdateCursor());
         IsEyedroppingProperty.Changed.AddClassHandler<PixelGridControl>((c, e) => c.UpdateCursor());
     }
+
+    public PixelGridControl()
+    {
+        // 捕获实际视口尺寸。ScrollViewer(Auto) 会以 PositiveInfinity 测量子控件，
+        // 此时无法从 availableSize 得知画布大小，需通过有效视口事件获取，用于计算"100% 适应画布"的基准尺寸。
+        EffectiveViewportChanged += OnEffectiveViewportChanged;
+    }
+
+    private void OnEffectiveViewportChanged(object? sender, EffectiveViewportChangedEventArgs e)
+    {
+        var vp = e.EffectiveViewport.Size;
+        if (vp.Width > 0 && vp.Height > 0 && vp != _viewportSize)
+        {
+            _viewportSize = vp;
+            InvalidateMeasure();
+        }
+    }
+
+    /// <summary>最近一次有效视口尺寸（即外层 ScrollViewer 的可视区域），用于在无穷大测量约束下计算适应尺寸。</summary>
+    private Size _viewportSize;
 
     // 颜色 → 画刷缓存，避免每帧重复创建大量 SolidColorBrush。
     private readonly Dictionary<uint, IBrush> _brushCache = new();
@@ -130,6 +163,13 @@ public class PixelGridControl : Control
     {
         get => GetValue(IsEyedroppingProperty);
         set => SetValue(IsEyedroppingProperty, value);
+    }
+
+    /// <summary>缩放比例，范围 [MinZoom, MaxZoom]（1.0=100%，5.0=500%）。</summary>
+    public double Zoom
+    {
+        get => GetValue(ZoomProperty);
+        set => SetValue(ZoomProperty, Math.Clamp(value, MinZoom, MaxZoom));
     }
 
     private void UpdateCursor()
@@ -317,19 +357,160 @@ public class PixelGridControl : Control
         return (px, py);
     }
 
+    /// <summary>
+    /// 测量：根据可用空间计算"适应尺寸"（保持纵横比），再乘以缩放比例。
+    /// zoom=1 时返回可用空间尺寸（填满画布、居中显示）；zoom>1 时返回超出可用空间的尺寸，
+    /// 触发外层 ScrollViewer 显示滚动条。
+    /// 注意：ScrollViewer(Auto) 会以 PositiveInfinity 测量子控件，此时需用捕获的视口尺寸
+    /// 作为基准，否则无法计算"100% 适应画布"的尺寸。
+    /// </summary>
+    protected override Size MeasureOverride(Size availableSize)
+    {
+        if (GridWidth <= 0 || GridHeight <= 0 || PixelData is null)
+            return base.MeasureOverride(availableSize);
+
+        // 可用空间为无穷时（ScrollViewer 可滚动方向），改用捕获的视口尺寸计算适应尺寸。
+        var effective = GetEffectiveAvailable(availableSize);
+        var (fitW, fitH) = ComputeFitSize(effective);
+        if (fitW <= 0 || fitH <= 0)
+            return base.MeasureOverride(availableSize);
+
+        double z = Zoom;
+        double contentW = fitW * z;
+        double contentH = fitH * z;
+        // 可用空间有限时至少填满（zoom=1 居中）；为无穷时直接使用内容尺寸（zoom>1 超出视口触发滚动）。
+        double w = double.IsInfinity(availableSize.Width) ? contentW : Math.Max(contentW, availableSize.Width);
+        double h = double.IsInfinity(availableSize.Height) ? contentH : Math.Max(contentH, availableSize.Height);
+        return new Size(w, h);
+    }
+
+    /// <summary>
+    /// 获取用于计算"适应尺寸"的有效可用空间。
+    /// 当外层 ScrollViewer 以无穷大测量本控件时，使用捕获的视口尺寸（或祖先 ScrollViewer 的 Viewport）替代。
+    /// </summary>
+    private Size GetEffectiveAvailable(Size availableSize)
+    {
+        if (!double.IsInfinity(availableSize.Width) && !double.IsInfinity(availableSize.Height))
+            return availableSize;
+
+        if (_viewportSize.Width > 0 && _viewportSize.Height > 0)
+            return _viewportSize;
+
+        var sv = FindScrollViewer();
+        if (sv is not null && sv.Viewport.Width > 0 && sv.Viewport.Height > 0)
+            return sv.Viewport;
+
+        return availableSize;
+    }
+
+    /// <summary>计算在指定可用空间内保持纵横比的"适应尺寸"。</summary>
+    private (double fitW, double fitH) ComputeFitSize(Size available)
+    {
+        double aw = available.Width;
+        double ah = available.Height;
+        if (double.IsInfinity(aw) && double.IsInfinity(ah))
+            return (GridWidth, GridHeight);
+        if (double.IsInfinity(aw)) aw = ah * GridWidth / (double)GridHeight;
+        if (double.IsInfinity(ah)) ah = aw * GridHeight / (double)GridWidth;
+        if (aw <= 0 || ah <= 0) return (0, 0);
+
+        double aspectGrid = (double)GridWidth / GridHeight;
+        double aspectBounds = aw / ah;
+        if (aspectGrid > aspectBounds)
+            return (aw, aw / aspectGrid);
+        else
+            return (ah * aspectGrid, ah);
+    }
+
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
         base.OnPointerPressed(e);
 
+        var point = e.GetCurrentPoint(this);
+        // 右键拖动平移：仅当内容超出视口时启用
+        if (point.Properties.IsRightButtonPressed)
+        {
+            var sv = FindScrollViewer();
+            if (sv is not null && IsOverflow(sv))
+            {
+                _isPanning = true;
+                _panStartViewportPoint = e.GetPosition(sv);
+                _panStartOffset = sv.Offset;
+                e.Pointer.Capture(this);
+                e.Handled = true;
+                Cursor = new Cursor(StandardCursorType.SizeAll);
+            }
+            return;
+        }
+
         if (!IsEditable) return;
 
-        var point = e.GetPosition(this);
-        if (PointToPixel(point) is (int px, int py))
+        var p = e.GetPosition(this);
+        if (PointToPixel(p) is (int px, int py))
         {
             e.Handled = true;
             PixelClicked?.Invoke(this, new PixelClickedEventArgs(px, py));
         }
     }
+
+    protected override void OnPointerMoved(PointerEventArgs e)
+    {
+        base.OnPointerMoved(e);
+        if (!_isPanning) return;
+
+        var sv = FindScrollViewer();
+        if (sv is null) return;
+
+        var current = e.GetPosition(sv);
+        var delta = current - _panStartViewportPoint;
+        // 拖动方向与滚动方向相反：向右拖图像，视口看到左侧内容 → 偏移减小
+        sv.Offset = new Vector(
+            Math.Max(0, _panStartOffset.X - delta.X),
+            Math.Max(0, _panStartOffset.Y - delta.Y));
+        e.Handled = true;
+    }
+
+    protected override void OnPointerReleased(PointerReleasedEventArgs e)
+    {
+        base.OnPointerReleased(e);
+        if (_isPanning)
+        {
+            _isPanning = false;
+            e.Pointer.Capture(null);
+            UpdateCursor();
+            e.Handled = true;
+        }
+    }
+
+    /// <summary>鼠标滚轮缩放（100%~500%）。有像素数据时滚轮始终用于缩放，不滚动。</summary>
+    protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
+    {
+        base.OnPointerWheelChanged(e);
+        if (GridWidth <= 0 || GridHeight <= 0 || PixelData is null) return;
+
+        // 有数据时滚轮始终用于缩放，阻止外层 ScrollViewer 滚动。
+        e.Handled = true;
+
+        double delta = e.Delta.Y;
+        if (delta == 0) return;
+
+        const double step = 0.25;
+        double newZoom = Zoom + (delta > 0 ? step : -step);
+        Zoom = Math.Clamp(newZoom, MinZoom, MaxZoom);
+    }
+
+    /// <summary>查找祖先 ScrollViewer（用于平移时调整滚动偏移）。</summary>
+    private ScrollViewer? FindScrollViewer() => this.FindAncestorOfType<ScrollViewer>();
+
+    /// <summary>内容是否超出视口（决定是否允许右键拖动平移）。</summary>
+    private static bool IsOverflow(ScrollViewer sv)
+        => sv.Extent.Width > sv.Viewport.Width + 0.5
+           || sv.Extent.Height > sv.Viewport.Height + 0.5;
+
+    // 平移状态
+    private bool _isPanning;
+    private Point _panStartViewportPoint;
+    private Vector _panStartOffset;
 
     private IBrush GetBrush(byte r, byte g, byte b, byte a)
     {
