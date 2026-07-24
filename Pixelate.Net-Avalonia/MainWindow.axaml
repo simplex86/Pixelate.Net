@@ -4,7 +4,7 @@
         xmlns:controls="using:Pixelate.Net.Avalonia.Controls"
         x:Class="Pixelate.Net.Avalonia.MainWindow"
         x:DataType="vm:MainWindowViewModel"
-        Title="拼豆像素画生成器 v1.0.57"
+        Title="拼豆像素画生成器 v1.0.59"
         Width="1280" Height="960"
         MinWidth="1080" MinHeight="960"
         WindowStartupLocation="CenterScreen"
@@ -704,7 +704,7 @@
                 </Border>
                 <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto" Margin="0,6,0,0">
                     <CheckBox Grid.Column="0"
-                              Content="显示颜色编码（豆图分辨较高时颜色编码或许不能正常显示，但不影响导出结果）"
+                              Content="显示颜色编码"
                               IsChecked="{Binding ShowCodes}"
                               IsEnabled="{Binding CanShowCodes}"
                               VerticalAlignment="Center" />

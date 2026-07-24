@@ -299,6 +299,8 @@ public partial class MainWindowViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(ExecuteRemoveNoiseCommand))]
     [NotifyCanExecuteChangedFor(nameof(CancelRemoveNoiseCommand))]
     [NotifyCanExecuteChangedFor(nameof(ApplyRemoveNoiseCommand))]
+    [NotifyPropertyChangedFor(nameof(CanUndo))]
+    [NotifyCanExecuteChangedFor(nameof(UndoCommand))]
     private bool _isPixelNoiseRemoving;
 
     /// <summary>噪点剔除：连通块周围背景像素的最低占比（百分比，50～100）。</summary>
@@ -585,7 +587,7 @@ public partial class MainWindowViewModel : ObservableObject
     public bool CanReplaceColors => IsPixelEditing && IsBatchEdit && BatchEditSourceColor is not null && BatchEditTargetColor is not null;
 
     /// <summary>是否可撤销：处于编辑或删除模式且 undo 栈非空。</summary>
-    public bool CanUndo => (IsPixelEditing || IsPixelDeleting) && _undoStack.Count > 0;
+    public bool CanUndo => (IsPixelEditing || IsPixelDeleting || IsPixelNoiseRemoving) && _undoStack.Count > 0;
 
     /// <summary>是否可显示颜色编码：需选中了品牌色卡，且未处于原图编辑状态。</summary>
     public bool CanShowCodes => _selectedBrand?.Value != BeadBrand.None && !IsEditing;
@@ -835,7 +837,9 @@ public partial class MainWindowViewModel : ObservableObject
     private void RemoveNoise()
     {
         _pixelNoiseBackup = PixelatedData;
+        _undoStack.Clear();
         IsPixelNoiseRemoving = true;
+        UndoCommand.NotifyCanExecuteChanged();
     }
 
     /// <summary>执行噪点剔除：弹出确认框，确认后按当前阈值处理噪点。</summary>
@@ -850,10 +854,30 @@ public partial class MainWindowViewModel : ObservableObject
             $"将以背景占比阈值 {NoiseRatio:F0}%、连通上限 {maxNoise} 剔除噪点，确定继续吗？", "确认剔除噪点");
         if (!confirmed) return;
 
-        var data = PixelatedData;
+        var oldData = PixelatedData;
         int w = PixelatedWidth;
         int h = PixelatedHeight;
-        byte[] newData = await Task.Run(() => ImagePixelator.RemoveNoise(data, w, h, ratio, maxNoise));
+        byte[] newData = await Task.Run(() => ImagePixelator.RemoveNoise(oldData, w, h, ratio, maxNoise));
+
+        // 将被修改的像素旧值推入 undo 栈
+        var changes = new List<(int index, byte r, byte g, byte b, byte a)>();
+        int total = w * h;
+        for (int i = 0; i < total; i++)
+        {
+            int idx = i * 4;
+            if (oldData[idx] != newData[idx] || oldData[idx + 1] != newData[idx + 1] ||
+                oldData[idx + 2] != newData[idx + 2] || oldData[idx + 3] != newData[idx + 3])
+            {
+                changes.Add((idx, oldData[idx], oldData[idx + 1], oldData[idx + 2], oldData[idx + 3]));
+            }
+        }
+        if (changes.Count > 0)
+        {
+            _undoStack.Push(changes);
+            if (_undoStack.Count == 1)
+                UndoCommand.NotifyCanExecuteChanged();
+        }
+
         PixelatedData = newData;
         RefreshBeadCount();
     }
@@ -865,8 +889,10 @@ public partial class MainWindowViewModel : ObservableObject
         if (_pixelNoiseBackup is not null)
             PixelatedData = _pixelNoiseBackup;
         _pixelNoiseBackup = null;
+        _undoStack.Clear();
         IsPixelNoiseRemoving = false;
         RefreshBeadCount();
+        UndoCommand.NotifyCanExecuteChanged();
     }
 
     /// <summary>应用噪点剔除结果，退出模式。</summary>
@@ -874,7 +900,9 @@ public partial class MainWindowViewModel : ObservableObject
     private void ApplyRemoveNoise()
     {
         _pixelNoiseBackup = null;
+        _undoStack.Clear();
         IsPixelNoiseRemoving = false;
+        UndoCommand.NotifyCanExecuteChanged();
     }
 
     /// <summary>删除所有与选中颜色相同的像素（设为透明）。</summary>
@@ -1161,6 +1189,12 @@ public partial class MainWindowViewModel : ObservableObject
         if (IsPixelDeleting)
         {
             RefreshDeleteColors();
+            RefreshBeadCount();
+        }
+
+        // 噪点剔除模式下刷新拼豆总数
+        if (IsPixelNoiseRemoving)
+        {
             RefreshBeadCount();
         }
 
